@@ -1,0 +1,17 @@
+[package]
+name = "kv8"
+version = "147.4.0"
+license = "MIT"
+edition = "2024"
+include = ["src"]
+
+[lib]
+name = "v8"
+
+[features]
+default = ["use_custom_libcxx"]
+use_custom_libcxx = []
+
+[dependencies]
+bitflags = "2.5"
+paste = "1.0"

@@ -1,0 +1,47 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 5d7b05e..2b1b434 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -5,7 +5,7 @@ declare_args() {
+   rusty_v8_enable_simdutf = false
+ }
+ 
+-static_library("rusty_v8") {
++static_library("kv8") {
+   complete_static_lib = true
+   sources = [
+     "src/binding.cc",
+diff --git a/build.rs b/build.rs
+index b7a71b2..8cc0f15 100644
+--- a/build.rs
++++ b/build.rs
+@@ -459,7 +459,7 @@ fn build_v8(is_asan: bool) {
+   if env_bool("PRINT_GN_ARGS") {
+     print_gn_args(&gn_out);
+   }
+-  build("rusty_v8", None);
++  build("kv8", None);
+ }
+ 
+ fn print_gn_args(gn_out_dir: &Path) {
+@@ -575,9 +575,9 @@ fn prebuilt_features_suffix() -> String {
+ fn static_lib_name(suffix: &str) -> String {
+   let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+   if target_os == "windows" {
+-    format!("rusty_v8{suffix}.lib")
++    format!("kv8{suffix}.lib")
+   } else {
+-    format!("librusty_v8{suffix}.a")
++    format!("libkv8{suffix}.a")
+   }
+ }
+ 
+@@ -823,7 +823,7 @@ fn copy_archive(url: &str, filename: &Path) {
+ }
+ 
+ fn print_link_flags() {
+-  println!("cargo:rustc-link-lib=static=rusty_v8");
++  println!("cargo:rustc-link-lib=static=kv8");
+   let should_dyn_link_libcxx = env::var("CARGO_FEATURE_USE_CUSTOM_LIBCXX")
+     .is_err()
+     || env::var("GN_ARGS").is_ok_and(|gn_args| {

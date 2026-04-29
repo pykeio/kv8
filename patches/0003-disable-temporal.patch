@@ -1,0 +1,25 @@
+diff --git a/.gn b/.gn
+index 858a605..74b59b3 100644
+--- a/.gn
++++ b/.gn
+@@ -86,7 +86,7 @@ default_args = {
+ 
+   enable_rust = true
+   enable_rust_cxx = true
+-  v8_enable_temporal_support = true
++  v8_enable_temporal_support = false
+ 
+   # prevent hashdos
+   v8_use_default_hasher_secret = false
+diff --git a/src/lib.rs b/src/lib.rs
+index f78efdc..3487937 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -27,7 +27,6 @@
+ 
+ #[macro_use]
+ extern crate bitflags;
+-extern crate temporal_capi;
+ 
+ mod array_buffer;
+ mod array_buffer_view;
