@@ -21,6 +21,10 @@ jobs:
         config:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+          - runner: macos-15
+            target: aarch64-apple-darwin
     env:
       LIB_NAME: ${{ contains(matrix.config.target, 'windows') && 'kv8' || 'libkv8' }}
       LIB_EXT: ${{ contains(matrix.config.target, 'windows') && 'lib' || 'a' }}
