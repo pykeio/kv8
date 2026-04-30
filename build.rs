@@ -23,7 +23,7 @@ fn main() {
             println!("cargo:rustc-link-lib=dylib=c++");
         } else if target.contains("android") {
             println!("cargo:rustc-link-lib=dylib=c++_shared");
-        } else {
+        } else if !target.contains("msvc") {
             println!("cargo:rustc-link-lib=dylib=stdc++");
         }
     }
