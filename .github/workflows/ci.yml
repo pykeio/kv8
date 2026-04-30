@@ -132,6 +132,7 @@ jobs:
         env:
           KV8_BINDING_PATH: ${{ github.workspace }}/rusty_v8/target/${{ matrix.config.target }}/release/gn_out/src_binding.rs
           KV8_BUILD_DIR: ${{ github.workspace }}/rusty_v8/target/${{ matrix.config.target }}/release/gn_out/obj/
+          TRYBUILD: overwrite # trybuild will pretty much always fail because our often newer rustc version has different error messages
         run: |
           cargo nextest run -v
 
