@@ -118,6 +118,12 @@ jobs:
         run: |
           deno run -A tools/patch.ts
           deno run -A tools/build-v8.ts --target ${{ matrix.config.target }}
+      - name: Test
+        env:
+          KV8_BINDING_PATH: ${{ github.workspace }}/rusty_v8/target/${{ matrix.config.target }}/release/gn_out/src_binding.rs
+          KV8_BUILD_DIR: ${{ github.workspace }}/rusty_v8/target/${{ matrix.config.target }}/release/gn_out/obj/
+        run: |
+          cargo test -vvv
 
       - uses: actions/upload-artifact@v4
         with:
