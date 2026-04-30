@@ -8,7 +8,7 @@ const FEATURES = ['v8_enable_pointer_compression', 'simdutf'];
 await new Command()
 	.option('--target <target:string>', 'rustc target', { required: true })
 	.action(async options => {
-		await $`cargo build --release --features ${FEATURES.join(',')} --target ${options.target}`
+		await $`cargo build --release --features ${FEATURES.join(',')} --target ${options.target} -vvv`
 			.cwd(TARGET_DIR)
 			.env({ V8_FROM_SOURCE: 'true' });
 	})
