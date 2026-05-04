@@ -1,0 +1,15 @@
+diff --git a/third_party/abseil-cpp/absl/base/options.h b/third_party/abseil-cpp/absl/base/options.h
+index 723fbe2a..92ca20fe 100644
+--- a/third_party/abseil-cpp/absl/base/options.h
++++ b/third_party/abseil-cpp/absl/base/options.h
+@@ -122,8 +122,8 @@
+ // be changed to a new, unique identifier name.  In particular "head" is not
+ // allowed.
+ 
+-#define ABSL_OPTION_USE_INLINE_NAMESPACE 0
+-#define ABSL_OPTION_INLINE_NAMESPACE_NAME head
++#define ABSL_OPTION_USE_INLINE_NAMESPACE 1
++#define ABSL_OPTION_INLINE_NAMESPACE_NAME kv8
+ 
+ // ABSL_OPTION_HARDENED
+ //
