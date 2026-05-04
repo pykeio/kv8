@@ -32,6 +32,10 @@ export async function patch(noReset: boolean = false) {
 
 export async function updateSrc() {
 	await copy(TARGET_SRC_DIR, SRC_DIR, { overwrite: true });
+	
+	const icuPath = 'third_party/icu/common/icudtl.dat';
+	await Deno.mkdir(join(ROOT, dirname(icuPath)), { recursive: true });
+	await copy(join(TARGET_DIR, icuPath), join(ROOT, icuPath), { overwrite: true });
 }
 
 export async function latestCommit(): Promise<[commit: string, version: string]> {
