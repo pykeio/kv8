@@ -32,7 +32,7 @@ jobs:
       - name: Configure git
         run: git config --global core.symlinks true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: recursive
@@ -47,7 +47,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.11.x
           architecture: x64
@@ -73,7 +73,7 @@ jobs:
         run: git submodule status --recursive > git_submodule_status.txt
 
       - name: Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |-
             target/sccache
@@ -149,11 +149,11 @@ jobs:
             binding_${{ matrix.config.target }}.rs
             ${{env.LIB_NAME}}_${{ matrix.config.target }}.${{env.LIB_EXT}}.gz
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binding_${{ matrix.config.target }}.rs
           path: binding_${{ matrix.config.target }}.rs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{env.LIB_NAME}}_${{ matrix.config.target }}.${{env.LIB_EXT}}.gz
           path: ${{env.LIB_NAME}}_${{ matrix.config.target }}.${{env.LIB_EXT}}.gz
