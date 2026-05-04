@@ -1,0 +1,13 @@
+diff --git a/build.rs b/build.rs
+index b7a71b2..b52c4d0 100644
+--- a/build.rs
++++ b/build.rs
+@@ -294,6 +294,8 @@ fn build_v8(is_asan: bool) {
+ 
+       if env::var("CARGO_FEATURE_V8_ENABLE_POINTER_COMPRESSION").is_ok() {
+         opts.push("v8_enable_pointer_compression=true");
++        opts.push("v8_enable_pointer_compression_shared_cage=false");
++        opts.push("v8_enable_external_code_space=true");
+       } else {
+         opts.push("v8_enable_pointer_compression=false");
+       }

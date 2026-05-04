@@ -1,0 +1,260 @@
+diff --git a/src/binding.cc b/src/binding.cc
+index 90dd1fd..d53c025 100644
+--- a/src/binding.cc
++++ b/src/binding.cc
+@@ -159,8 +159,30 @@ void v8__V8__SetFatalErrorHandler(v8::V8FatalErrorCallback that) {
+   v8::V8::SetFatalErrorHandler(that);
+ }
+ 
+-v8::Isolate* v8__Isolate__New(const v8::Isolate::CreateParams& params) {
+-  return v8::Isolate::New(params);
++v8::internal::IsolateGroup* v8__IsolateGroup__GetDefault() {
++  return make_pod<v8::internal::IsolateGroup*>(v8::IsolateGroup::GetDefault());
++}
++
++bool v8__IsolateGroup__CanCreateNewGroups() {
++  return v8::IsolateGroup::CanCreateNewGroups();
++}
++
++v8::internal::IsolateGroup* v8__IsolateGroup__Create() {
++  return make_pod<v8::internal::IsolateGroup*>(v8::IsolateGroup::Create());
++}
++
++void v8__IsolateGroup__DESTRUCT(v8::IsolateGroup* self) {
++  self->~IsolateGroup();
++}
++
++bool v8__IsolateGroup__EQ(const v8::IsolateGroup& self,
++                          const v8::IsolateGroup& other) {
++  return self == other;
++}
++
++v8::Isolate* v8__Isolate__New(const v8::IsolateGroup& group,
++                              const v8::Isolate::CreateParams& params) {
++  return v8::Isolate::New(group, params);
+ }
+ 
+ void v8__Isolate__Dispose(v8::Isolate* isolate) { isolate->Dispose(); }
+diff --git a/src/isolate.rs b/src/isolate.rs
+index f98d877..a6dfea4 100644
+--- a/src/isolate.rs
++++ b/src/isolate.rs
+@@ -32,6 +32,7 @@ use crate::handle::FinalizerCallback;
+ use crate::handle::FinalizerMap;
+ use crate::isolate_create_params::CreateParams;
+ use crate::isolate_create_params::raw;
++use crate::isolate_group::IsolateGroup;
+ use crate::promise::PromiseRejectMessage;
+ use crate::snapshot::SnapshotCreator;
+ use crate::support::MapFnFrom;
+@@ -604,7 +605,10 @@ pub type UseCounterCallback =
+   unsafe extern "C" fn(&mut Isolate, UseCounterFeature);
+ 
+ unsafe extern "C" {
+-  fn v8__Isolate__New(params: *const raw::CreateParams) -> *mut RealIsolate;
++  fn v8__Isolate__New(
++    group: *const IsolateGroup,
++    params: *const raw::CreateParams,
++  ) -> *mut RealIsolate;
+   fn v8__Isolate__Dispose(this: *mut RealIsolate);
+   fn v8__Isolate__GetNumberOfDataSlots(this: *const RealIsolate) -> u32;
+   fn v8__Isolate__GetData(
+@@ -906,10 +910,10 @@ impl Isolate {
+     )
+   }
+ 
+-  fn new_impl(params: CreateParams) -> *mut RealIsolate {
++  fn new_impl(group: &IsolateGroup, params: CreateParams) -> *mut RealIsolate {
+     crate::V8::assert_initialized();
+     let (raw_create_params, create_param_allocations) = params.finalize();
+-    let cxx_isolate = unsafe { v8__Isolate__New(&raw_create_params) };
++    let cxx_isolate = unsafe { v8__Isolate__New(group, &raw_create_params) };
+     let mut isolate = unsafe { Isolate::from_raw_ptr(cxx_isolate) };
+     isolate.initialize(create_param_allocations);
+     cxx_isolate
+@@ -929,7 +933,22 @@ impl Isolate {
+   /// V8::initialize() must have run prior to this.
+   #[allow(clippy::new_ret_no_self)]
+   pub fn new(params: CreateParams) -> OwnedIsolate {
+-    OwnedIsolate::new(Self::new_impl(params))
++    let group = IsolateGroup::get_default();
++    OwnedIsolate::new(Self::new_impl(&group, params))
++  }
++
++  /// Creates a new isolate.  Does not change the currently entered
++  /// isolate.
++  ///
++  /// When an isolate is no longer used its resources should be freed
++  /// by calling V8::dispose().  Using the delete operator is not allowed.
++  ///
++  /// V8::initialize() must have run prior to this.
++  pub fn new_with_group(
++    group: &IsolateGroup,
++    params: CreateParams,
++  ) -> OwnedIsolate {
++    OwnedIsolate::new(Self::new_impl(group, params))
+   }
+ 
+   #[allow(clippy::new_ret_no_self)]
+diff --git a/src/isolate_group.rs b/src/isolate_group.rs
+new file mode 100644
+index 0000000..a7261a8
+--- /dev/null
++++ b/src/isolate_group.rs
+@@ -0,0 +1,88 @@
++// Copyright 2019-2021 the Deno authors. All rights reserved. MIT license.
++
++use crate::support::Opaque;
++
++#[repr(C)]
++struct InternalIsolateGroup(Opaque);
++
++unsafe extern "C" {
++  fn v8__IsolateGroup__GetDefault() -> *const InternalIsolateGroup;
++  fn v8__IsolateGroup__CanCreateNewGroups() -> bool;
++  fn v8__IsolateGroup__Create() -> *const InternalIsolateGroup;
++
++  fn v8__IsolateGroup__DESTRUCT(this: *mut IsolateGroup);
++  fn v8__IsolateGroup__EQ(
++    this: *const IsolateGroup,
++    other: *const IsolateGroup,
++  ) -> bool;
++}
++
++/// The set of V8 isolates in a process is partitioned into groups. Each group
++/// has its own sandbox (if V8 was configured with support for the sandbox) and
++/// pointer-compression cage (if configured with pointer compression).
++///
++/// By default, all isolates are placed in the same group. This is the most
++/// efficient configuration in terms of speed and memory use. However, with
++/// pointer compression enabled, total heap usage of isolates in a group cannot
++/// exceed 4 GB, not counting array buffers and other off-heap storage. Using
++/// multiple isolate groups can allow embedders to allocate more than 4GB of
++/// objects with pointer compression enabled, if the embedder's use case can
++/// span multiple isolates.
++///
++/// Creating an isolate group reserves a range of virtual memory addresses. A
++/// group's memory mapping will be released when the last isolate in the group
++/// is disposed, and there are no more live IsolateGroup objects that refer to
++/// it.
++///
++/// Note that Isolate groups are reference counted, and the IsolateGroup type is
++/// a reference to one.
++///
++/// Note that it's not going to be possible to pass shared JS objects across
++/// IsolateGroup boundary.
++#[repr(C)]
++pub struct IsolateGroup(*const InternalIsolateGroup);
++
++unsafe impl Send for IsolateGroup {}
++unsafe impl Sync for IsolateGroup {}
++
++impl IsolateGroup {
++  /// Return true if new isolate groups can be created at run-time, or false if
++  /// all isolates must be in the same group.
++  pub fn can_create_new_groups() -> bool {
++    unsafe { v8__IsolateGroup__CanCreateNewGroups() }
++  }
++
++  /// Get the default isolate group. If this V8's build configuration only
++  /// supports a single group, this is a reference to that single group.
++  /// Otherwise this is a group like any other, distinguished only in that it is
++  /// the first group.
++  pub fn get_default() -> Self {
++    IsolateGroup(unsafe { v8__IsolateGroup__GetDefault() })
++  }
++
++  /// Create a new isolate group. If this V8's build configuration only supports
++  /// a single group, abort.
++  pub fn create() -> Self {
++    IsolateGroup(unsafe { v8__IsolateGroup__Create() })
++  }
++}
++
++impl Default for IsolateGroup {
++  fn default() -> Self {
++    IsolateGroup::get_default()
++  }
++}
++
++impl Drop for IsolateGroup {
++  fn drop(&mut self) {
++    unsafe { v8__IsolateGroup__DESTRUCT(self) }
++  }
++}
++
++impl Eq for IsolateGroup {}
++
++impl PartialEq for IsolateGroup {
++  fn eq(&self, other: &Self) -> bool {
++    unsafe { v8__IsolateGroup__EQ(self, other) }
++  }
++}
+diff --git a/src/lib.rs b/src/lib.rs
+index f78efdc..b0c1a84 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -50,6 +50,7 @@ mod handle;
+ pub mod icu;
+ mod isolate;
+ mod isolate_create_params;
++mod isolate_group;
+ mod microtask;
+ mod module;
+ mod name;
+@@ -136,6 +137,7 @@ pub use isolate::UseCounterCallback;
+ pub use isolate::UseCounterFeature;
+ pub use isolate::WasmAsyncSuccess;
+ pub use isolate_create_params::CreateParams;
++pub use isolate_group::IsolateGroup;
+ pub use microtask::MicrotaskQueue;
+ pub use module::*;
+ pub use object::*;
+diff --git a/tests/test_api.rs b/tests/test_api.rs
+index f2a821c..1be18c0 100644
+--- a/tests/test_api.rs
++++ b/tests/test_api.rs
+@@ -624,6 +624,43 @@ fn microtasks() {
+   }
+ }
+ 
++#[test]
++fn isolate_groups() {
++  let _setup_guard = setup::parallel_test();
++
++  if !v8::IsolateGroup::can_create_new_groups() {
++    println!(
++      "Skipping 'isolate_groups' test: current build does not support isolate groups"
++    );
++    return;
++  }
++
++  fn test_isolate_with_group(
++    group: v8::IsolateGroup,
++  ) -> std::thread::JoinHandle<()> {
++    std::thread::spawn(move || {
++      let isolate =
++        &mut v8::Isolate::new_with_group(&group, Default::default());
++      v8::scope!(let scope, isolate);
++      let context = v8::Context::new(scope, Default::default());
++      let scope = &mut v8::ContextScope::new(scope, context);
++      let result = eval(scope, "1 + 1").unwrap().int32_value(scope).unwrap();
++      assert_eq!(result, 2);
++    })
++  }
++
++  let group1 = v8::IsolateGroup::create();
++  let group2 = v8::IsolateGroup::create();
++
++  let t0 = test_isolate_with_group(Default::default());
++  let t1 = test_isolate_with_group(group1);
++  let t2 = test_isolate_with_group(group2);
++
++  t0.join().unwrap();
++  t1.join().unwrap();
++  t2.join().unwrap();
++}
++
+ #[test]
+ #[should_panic(
+   expected = "v8::OwnedIsolate instances must be dropped in the reverse order of creation. They are entered upon creation and exited upon being dropped."

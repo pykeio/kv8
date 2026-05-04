@@ -32,6 +32,7 @@ use crate::handle::FinalizerCallback;
 use crate::handle::FinalizerMap;
 use crate::isolate_create_params::CreateParams;
 use crate::isolate_create_params::raw;
+use crate::isolate_group::IsolateGroup;
 use crate::promise::PromiseRejectMessage;
 use crate::snapshot::SnapshotCreator;
 use crate::support::MapFnFrom;
@@ -604,7 +605,10 @@ pub type UseCounterCallback =
   unsafe extern "C" fn(&mut Isolate, UseCounterFeature);
 
 unsafe extern "C" {
-  fn v8__Isolate__New(params: *const raw::CreateParams) -> *mut RealIsolate;
+  fn v8__Isolate__New(
+    group: *const IsolateGroup,
+    params: *const raw::CreateParams,
+  ) -> *mut RealIsolate;
   fn v8__Isolate__Dispose(this: *mut RealIsolate);
   fn v8__Isolate__GetNumberOfDataSlots(this: *const RealIsolate) -> u32;
   fn v8__Isolate__GetData(
@@ -906,10 +910,10 @@ impl Isolate {
     )
   }
 
-  fn new_impl(params: CreateParams) -> *mut RealIsolate {
+  fn new_impl(group: &IsolateGroup, params: CreateParams) -> *mut RealIsolate {
     crate::V8::assert_initialized();
     let (raw_create_params, create_param_allocations) = params.finalize();
-    let cxx_isolate = unsafe { v8__Isolate__New(&raw_create_params) };
+    let cxx_isolate = unsafe { v8__Isolate__New(group, &raw_create_params) };
     let mut isolate = unsafe { Isolate::from_raw_ptr(cxx_isolate) };
     isolate.initialize(create_param_allocations);
     cxx_isolate
@@ -929,7 +933,22 @@ impl Isolate {
   /// V8::initialize() must have run prior to this.
   #[allow(clippy::new_ret_no_self)]
   pub fn new(params: CreateParams) -> OwnedIsolate {
-    OwnedIsolate::new(Self::new_impl(params))
+    let group = IsolateGroup::get_default();
+    OwnedIsolate::new(Self::new_impl(&group, params))
+  }
+
+  /// Creates a new isolate.  Does not change the currently entered
+  /// isolate.
+  ///
+  /// When an isolate is no longer used its resources should be freed
+  /// by calling V8::dispose().  Using the delete operator is not allowed.
+  ///
+  /// V8::initialize() must have run prior to this.
+  pub fn new_with_group(
+    group: &IsolateGroup,
+    params: CreateParams,
+  ) -> OwnedIsolate {
+    OwnedIsolate::new(Self::new_impl(group, params))
   }
 
   #[allow(clippy::new_ret_no_self)]
