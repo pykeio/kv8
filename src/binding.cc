@@ -22,8 +22,10 @@
 #include "v8-platform.h"
 #include "v8-profiler.h"
 #include "v8.h"
+#include "v8/src/api/api-inl.h"
 #include "v8/src/flags/flags.h"
 #include "v8/src/libplatform/default-platform.h"
+#include "v8/src/objects/templates-inl.h"
 
 using namespace support;
 
@@ -1206,6 +1208,13 @@ const v8::String* v8__String__NewFromTwoByte(v8::Isolate* isolate,
       v8::String::NewFromTwoByte(isolate, data, new_type, length));
 }
 
+const v8::String* v8__String__Concat(v8::Isolate* isolate,
+                                     const v8::String& left,
+                                     const v8::String& right) {
+  return local_to_ptr(
+      v8::String::Concat(isolate, ptr_to_local(&left), ptr_to_local(&right)));
+}
+
 int v8__String__Length(const v8::String& self) { return self.Length(); }
 
 int v8__String__Utf8Length(const v8::String& self, v8::Isolate* isolate) {
@@ -1668,6 +1677,17 @@ MaybeBool v8__Object__SetAccessor(const v8::Object& self,
   return maybe_to_maybe_bool(ptr_to_local(&self)->SetNativeDataProperty(
       ptr_to_local(&context), ptr_to_local(&key), getter, setter,
       ptr_to_local(data_or_null), attr));
+}
+
+MaybeBool v8__Object__SetLazyDataProperty(
+    const v8::Object& self, const v8::Context& context, const v8::Name& key,
+    v8::AccessorNameGetterCallback getter, const v8::Value* data_or_null,
+    v8::PropertyAttribute attr, v8::SideEffectType getter_side_effect_type,
+    v8::SideEffectType setter_side_effect_type) {
+  return maybe_to_maybe_bool(ptr_to_local(&self)->SetLazyDataProperty(
+      ptr_to_local(&context), ptr_to_local(&key), getter,
+      ptr_to_local(data_or_null), attr, getter_side_effect_type,
+      setter_side_effect_type));
 }
 
 int v8__Object__GetIdentityHash(const v8::Object& self) {
@@ -2493,9 +2513,50 @@ const v8::ObjectTemplate* v8__FunctionTemplate__InstanceTemplate(
   return local_to_ptr(ptr_to_local(&self)->InstanceTemplate());
 }
 
+// Returns the number of fast-call (C function) overloads attached to this
+// FunctionTemplate. Each overload corresponds to one
+// `Managed<CFunctionWithSignature>` heap object that V8 creates internally
+// when `SetCallHandler` is called with `c_function_overloads`. Embedders need
+// the count so they can iterate and register the overloads with the
+// SnapshotCreator (via `AddData`), otherwise the per-Managed weak global
+// handles trip `CheckGlobalAndEternalHandles` during snapshot creation.
+uint32_t v8__FunctionTemplate__GetCFunctionOverloadCount(
+    const v8::FunctionTemplate& self) {
+  auto info = v8::Utils::OpenDirectHandle(&self);
+  return v8::internal::Cast<v8::internal::FixedArray>(
+             info->GetCFunctionOverloads())
+      ->ulength()
+      .value();
+}
+
+// Returns the n-th fast-call overload as a `Local<Data>` so it can be passed
+// to `SnapshotCreator::AddData`. The returned handle wraps the internal
+// `Managed<CFunctionWithSignature>` object.
+const v8::Data* v8__FunctionTemplate__GetCFunctionOverload(
+    const v8::FunctionTemplate& self, uint32_t index) {
+  namespace i = v8::internal;
+  auto info = v8::Utils::OpenDirectHandle(&self);
+  i::Isolate* i_isolate = i::Isolate::Current();
+  i::Tagged<i::Object> overload =
+      i::Cast<i::FixedArray>(info->GetCFunctionOverloads())->get(index);
+  return local_to_ptr(
+      v8::Utils::ToLocal(i::direct_handle(overload, i_isolate)));
+}
+
 v8::Isolate* v8__FunctionCallbackInfo__GetIsolate(
     const v8::FunctionCallbackInfo<v8::Value>& self) {
   return self.GetIsolate();
+}
+
+function_callback_info_parts_t v8__FunctionCallbackInfo__GetParts(
+    const v8::FunctionCallbackInfo<v8::Value>& self) {
+  v8::ReturnValue<v8::Value> rv = self.GetReturnValue();
+  return {
+      self.GetIsolate(),
+      *reinterpret_cast<void**>(&rv),
+      local_to_ptr(self.Data()),
+      self.Length(),
+  };
 }
 
 const v8::Value* v8__FunctionCallbackInfo__Data(
@@ -3387,6 +3448,40 @@ void v8_inspector__V8Inspector__contextDestroyed(
   self->contextDestroyed(ptr_to_local(&context));
 }
 
+void v8_inspector__V8Inspector__idleStarted(v8_inspector::V8Inspector* self) {
+  self->idleStarted();
+}
+
+void v8_inspector__V8Inspector__idleFinished(v8_inspector::V8Inspector* self) {
+  self->idleFinished();
+}
+
+void v8_inspector__V8Inspector__asyncTaskScheduled(
+    v8_inspector::V8Inspector* self, v8_inspector::StringView task_name,
+    void* task, bool recurring) {
+  self->asyncTaskScheduled(task_name, task, recurring);
+}
+
+void v8_inspector__V8Inspector__asyncTaskCanceled(
+    v8_inspector::V8Inspector* self, void* task) {
+  self->asyncTaskCanceled(task);
+}
+
+void v8_inspector__V8Inspector__asyncTaskStarted(
+    v8_inspector::V8Inspector* self, void* task) {
+  self->asyncTaskStarted(task);
+}
+
+void v8_inspector__V8Inspector__asyncTaskFinished(
+    v8_inspector::V8Inspector* self, void* task) {
+  self->asyncTaskFinished(task);
+}
+
+void v8_inspector__V8Inspector__allAsyncTasksCanceled(
+    v8_inspector::V8Inspector* self) {
+  self->allAsyncTasksCanceled();
+}
+
 bool v8_inspector__V8InspectorSession__canDispatchMethod(
     v8_inspector::StringView method) {
   return v8_inspector::V8InspectorSession::canDispatchMethod(method);
@@ -3430,6 +3525,11 @@ void v8_inspector__V8InspectorSession__schedulePauseOnNextStatement(
     v8_inspector::V8InspectorSession* self, v8_inspector::StringView reason,
     v8_inspector::StringView detail) {
   self->schedulePauseOnNextStatement(reason, detail);
+}
+
+void v8_inspector__V8InspectorSession__cancelPauseOnNextStatement(
+    v8_inspector::V8InspectorSession* self) {
+  self->cancelPauseOnNextStatement();
 }
 }  // extern "C"
 
