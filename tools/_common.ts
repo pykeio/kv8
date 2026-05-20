@@ -12,6 +12,8 @@ export const TARGET_SRC_DIR = join(TARGET_DIR, 'src');
 export async function resetUpstream() {
 	await $`git reset --hard HEAD`
 		.cwd(TARGET_DIR);
+	await $`git submodule foreach --recursive git reset --hard HEAD`
+		.cwd(TARGET_DIR);
 	await $`git clean -fdx`
 		.cwd(TARGET_DIR);
 }
