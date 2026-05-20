@@ -37,7 +37,7 @@ await $`git commit -m "Update to v8 ${latestVersion}"`.cwd(ROOT);
 await $`git push origin +HEAD:refs/heads/autoupdate`.cwd(ROOT);
 await $`git fetch origin autoupdate`.cwd(ROOT);
 
-const res = await $`gh pr view autoupdate --json state`.stdout('piped');
+const res = await $`gh pr view autoupdate --json state`.stdout('piped').noThrow();
 if (res.code === 0 && res.stdoutJson.state === 'OPEN') {
 	await $`gh pr edit autoupdate --title "Update to v8 ${latestVersion}"`.cwd(ROOT);
 } else {
