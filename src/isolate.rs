@@ -71,6 +71,7 @@ use std::ptr::drop_in_place;
 use std::ptr::null_mut;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicPtr;
 
 /// Policy for running microtasks:
 ///   - explicit: microtasks are invoked with the
@@ -806,12 +807,22 @@ pub struct Isolate(NonNull<RealIsolate>);
 pub struct UnsafeRawIsolatePtr(*mut RealIsolate);
 
 impl UnsafeRawIsolatePtr {
+  #[inline]
+  pub(crate) fn from_real_ptr(ptr: *mut RealIsolate) -> Self {
+    Self(ptr)
+  }
+
   pub fn null() -> Self {
     Self(std::ptr::null_mut())
   }
 
   pub fn is_null(&self) -> bool {
     self.0.is_null()
+  }
+
+  #[inline]
+  pub(crate) fn as_real_ptr(&self) -> *mut RealIsolate {
+    self.0
   }
 }
 
@@ -983,6 +994,11 @@ impl Isolate {
     self.get_annex().isolate_handle.clone()
   }
 
+  #[inline(always)]
+  pub(crate) fn global_liveness(&self) -> NonNull<IsolateLiveness> {
+    self.get_annex().global_liveness
+  }
+
   /// See [`IsolateHandle::terminate_execution`]
   #[inline(always)]
   pub fn terminate_execution(&self) -> bool {
@@ -1020,6 +1036,7 @@ impl Isolate {
     // Set the `isolate` pointer inside the annex struct to null, so any
     // IsolateHandle that outlives the isolate will know that it can't call
     // methods on the isolate.
+    annex.global_liveness().dispose();
     annex.isolate_handle.dispose();
 
     // Clear slots and drop owned objects that were taken out of `CreateParams`.
@@ -1923,17 +1940,28 @@ pub(crate) struct IsolateAnnex {
   finalizer_map: FinalizerMap,
   maybe_snapshot_creator: Option<SnapshotCreator>,
   isolate_handle: IsolateHandle,
+  global_liveness: NonNull<IsolateLiveness>,
 }
 
 impl IsolateAnnex {
   fn new(isolate: &Isolate, create_param_allocations: Box<dyn Any>) -> Self {
+    // Globals may be dropped after their host isolate is disposed. Keep this
+    // tiny liveness cell valid so those late drops can observe the null isolate
+    // pointer without retaining an Arc per Global.
+    let global_liveness = Box::leak(Box::new(IsolateLiveness::new(isolate)));
     Self {
       create_param_allocations,
       slots: HashMap::default(),
       finalizer_map: FinalizerMap::default(),
       maybe_snapshot_creator: None,
       isolate_handle: IsolateHandle::new(isolate),
+      global_liveness: NonNull::from(global_liveness),
     }
+  }
+
+  #[inline(always)]
+  fn global_liveness(&self) -> &IsolateLiveness {
+    unsafe { self.global_liveness.as_ref() }
   }
 
   #[inline(always)]
@@ -1966,6 +1994,31 @@ impl IsolateAnnex {
       .slots
       .remove(&TypeId::of::<T>())
       .map(|slot| unsafe { slot.into_inner::<T>() })
+  }
+}
+
+pub(crate) struct IsolateLiveness {
+  isolate: AtomicPtr<RealIsolate>,
+}
+
+impl IsolateLiveness {
+  #[inline(always)]
+  fn new(isolate: &Isolate) -> Self {
+    Self {
+      isolate: AtomicPtr::new(isolate.as_real_ptr()),
+    }
+  }
+
+  #[inline(always)]
+  fn dispose(&self) {
+    self
+      .isolate
+      .store(null_mut(), std::sync::atomic::Ordering::Relaxed);
+  }
+
+  #[inline(always)]
+  pub(crate) fn get_isolate_ptr(&self) -> *mut RealIsolate {
+    self.isolate.load(std::sync::atomic::Ordering::Relaxed)
   }
 }
 
