@@ -33,13 +33,16 @@ await Deno.writeTextFile(
 );
 
 await $`git add rusty_v8 src Cargo.toml`.cwd(ROOT);
-await $`git commit -m "Update to v8 ${latestVersion}"`.cwd(ROOT);
+await $`git commit -m ${`Update to v8 ${latestVersion}`}"`.cwd(ROOT);
 await $`git push origin +HEAD:refs/heads/autoupdate`.cwd(ROOT);
 await $`git fetch origin autoupdate`.cwd(ROOT);
 
 const res = await $`gh pr view autoupdate --json state`.stdout('piped').noThrow();
 if (res.code === 0 && res.stdoutJson.state === 'OPEN') {
-	await $`gh pr edit autoupdate --title "Update to v8 ${latestVersion}"`.cwd(ROOT);
+	if (!res.stdoutJson.isDraft) {
+		await $`gh pr ready autoupdate --undo`.noThrow();
+	}
+	await $`gh pr edit autoupdate --title ${`Update to v8 ${latestVersion}`}`.cwd(ROOT);
 } else {
-	await $`gh pr create --title "Update to v8 ${latestVersion}" --body "" --head pykeio:autoupdate`.cwd(ROOT);
+	await $`gh pr create --draft --title ${`Update to v8 ${latestVersion}`} --body "" --head pykeio:autoupdate`.cwd(ROOT);
 }
