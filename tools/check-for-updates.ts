@@ -33,7 +33,7 @@ await Deno.writeTextFile(
 );
 
 await $`git add rusty_v8 src Cargo.toml`.cwd(ROOT);
-await $`git commit -m ${`Update to v8 ${latestVersion}`}"`.cwd(ROOT);
+await $`git commit -m ${`Update to v8 ${latestVersion}`}`.cwd(ROOT);
 await $`git push origin +HEAD:refs/heads/autoupdate`.cwd(ROOT);
 await $`git fetch origin autoupdate`.cwd(ROOT);
 
