@@ -34,14 +34,14 @@ export async function patch(noReset: boolean = false) {
 
 export async function updateSrc() {
 	await copy(TARGET_SRC_DIR, SRC_DIR, { overwrite: true });
-	
+
 	const icuPath = 'third_party/icu/common/icudtl.dat';
 	await Deno.mkdir(join(ROOT, dirname(icuPath)), { recursive: true });
 	await copy(join(TARGET_DIR, icuPath), join(ROOT, icuPath), { overwrite: true });
 }
 
 export async function latestCommit(): Promise<[commit: string, version: string]> {
-	const res = (await $`git ls-remote --tags --sort='-version:refname' origin`.cwd(TARGET_DIR).stdout('piped'));
+	const res = (await $`git ls-remote --tags --refs --sort='-version:refname' origin`.cwd(TARGET_DIR).stdout('piped'));
 	const latest = res.stdout.split('\n')[0];
 	const [ commit, ref ] = latest.split('\t');
 	return [ commit, ref.replace(/^refs\/tags\/v?/, '') ];
