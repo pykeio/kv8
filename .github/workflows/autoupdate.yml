@@ -12,12 +12,10 @@ jobs:
         with:
           fetch-depth: 1
           submodules: recursive
-      - name: Fetch origin/main
-        run: git fetch origin main
       - uses: denoland/setup-deno@v2
       - run: |
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
           deno run -A tools/check-for-updates.ts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
