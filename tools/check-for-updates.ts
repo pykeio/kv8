@@ -8,7 +8,7 @@ const manifest = await Deno.readTextFile(CARGO_TOML);
 const versionLine = manifest.match(/version = "(\d+\.\d+\.\d+)"/)!;
 const currentVersion = versionLine[1];
 
-await $`git fetch`.cwd(TARGET_DIR);
+await $`git fetch --refetch --no-write-fetch-head`.cwd(TARGET_DIR);
 
 const [ newCommit, latestVersion ] = await latestCommit();
 if (latestVersion === currentVersion) {

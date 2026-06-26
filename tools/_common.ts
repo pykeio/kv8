@@ -42,7 +42,10 @@ export async function updateSrc() {
 
 export async function latestCommit(): Promise<[commit: string, version: string]> {
 	const res = (await $`git ls-remote --refs --sort='-version:refname' origin`.cwd(TARGET_DIR).stdout('piped'));
-	const latest = res.stdout.split('\n')[0];
-	const [ commit, ref ] = latest.split('\t');
+	const [ commit, ref ] = res.stdout.split('\n')
+		.filter(Boolean)
+		.map(c => c.split('\t'))
+		.filter(x => x[1].startsWith('refs/tags/v'))
+		[0];
 	return [ commit, ref.replace(/^refs\/tags\/v?/, '').replace(/\^\{}$/, '') ];
 }
