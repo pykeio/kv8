@@ -8,8 +8,6 @@ const manifest = await Deno.readTextFile(CARGO_TOML);
 const versionLine = manifest.match(/version = "(\d+\.\d+\.\d+)"/)!;
 const currentVersion = versionLine[1];
 
-await $`git fetch --refetch --no-write-fetch-head`.cwd(TARGET_DIR);
-
 const [ newCommit, latestVersion ] = await latestCommit();
 if (latestVersion === currentVersion) {
 	console.log('Up to date.');
@@ -20,7 +18,7 @@ console.log(`Updating to new version: ${latestVersion} (${newCommit}) from ${cur
 
 await resetUpstream();
 
-await $`git checkout ${newCommit}`.cwd(TARGET_DIR);
+await $`git pull origin ${newCommit}`.cwd(TARGET_DIR);
 await $`git submodule update --init --recursive`.cwd(TARGET_DIR);
 
 await patch(true);
