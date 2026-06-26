@@ -3,6 +3,16 @@ on:
   push:
     branches: [main]
     tags: ["**"]
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'patches/*.patch'
+      - 'src/**/*.rs'
+      - 'rusty_v8/**/*'
+      - 'Cargo.toml'
+      - 'build.rs'
+      - 'tools/patch.ts'
+      - 'tools/build-v8.ts'
+      - 'tests/**/*'
   pull_request:
     branches: [main]
     types: [labeled, opened, synchronize, reopened]
