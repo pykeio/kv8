@@ -1,7 +1,7 @@
 name: Update v8
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 0 * * 5"
   workflow_dispatch:
 permissions: write-all
 jobs:
@@ -10,7 +10,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 1
           submodules: recursive
       - uses: denoland/setup-deno@v2
       - run: |
