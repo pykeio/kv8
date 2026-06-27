@@ -1,6 +1,6 @@
 [package]
 name = "kv8"
-version = "149.2.0"
+version = "150.0.0"
 license = "MIT"
 edition = "2024"
 include = ["src"]
