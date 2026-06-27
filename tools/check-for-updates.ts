@@ -21,6 +21,9 @@ await resetUpstream();
 await $`git pull origin ${newCommit}`.cwd(TARGET_DIR);
 await $`git submodule update --init --recursive`.cwd(TARGET_DIR);
 
+// add the clean upstream commit before patching so we don't push a dirty ref
+await $`git add rusty_v8`.cwd(ROOT);
+
 await patch(true);
 
 await updateSrc();
@@ -30,7 +33,7 @@ await Deno.writeTextFile(
 	manifest.replace(versionLine[0], `version = "${latestVersion}"`)
 );
 
-await $`git add rusty_v8 src Cargo.toml`.cwd(ROOT);
+await $`git add src Cargo.toml`.cwd(ROOT);
 await $`git commit -m ${`Update to v8 ${latestVersion}`}`.cwd(ROOT);
 await $`git push origin +HEAD:refs/heads/autoupdate`.cwd(ROOT);
 await $`git fetch origin autoupdate`.cwd(ROOT);
