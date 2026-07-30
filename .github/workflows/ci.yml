@@ -119,6 +119,10 @@ jobs:
           XCODE_CLANG_LIB="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/lib"
           echo "LIBCLANG_PATH=$XCODE_CLANG_LIB" >> $GITHUB_ENV
 
+      - name: Delete bad patch
+        if: runner.os == 'Windows'
+        run: del C:/Strawberry/c/bin/patch.exe
+
       - name: Build
         env:
           SCCACHE_IDLE_TIMEOUT: 0
