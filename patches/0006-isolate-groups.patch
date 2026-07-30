@@ -2,10 +2,10 @@ diff --git a/src/binding.cc b/src/binding.cc
 index 90dd1fd..d53c025 100644
 --- a/src/binding.cc
 +++ b/src/binding.cc
-@@ -159,8 +159,30 @@ void v8__V8__SetFatalErrorHandler(v8::V8FatalErrorCallback that) {
-   v8::V8::SetFatalErrorHandler(that);
+@@ -159,8 +159,30 @@ bool v8__V8__EnableWebAssemblyTrapHandler(bool use_v8_signal_handler) {
+   return v8::V8::EnableWebAssemblyTrapHandler(use_v8_signal_handler);
  }
- 
+
 -v8::Isolate* v8__Isolate__New(const v8::Isolate::CreateParams& params) {
 -  return v8::Isolate::New(params);
 +v8::internal::IsolateGroup* v8__IsolateGroup__GetDefault() {
@@ -33,7 +33,7 @@ index 90dd1fd..d53c025 100644
 +                              const v8::Isolate::CreateParams& params) {
 +  return v8::Isolate::New(group, params);
  }
- 
+
  void v8__Isolate__Dispose(v8::Isolate* isolate) { isolate->Dispose(); }
 diff --git a/src/isolate.rs b/src/isolate.rs
 index f98d877..a6dfea4 100644
@@ -49,7 +49,7 @@ index f98d877..a6dfea4 100644
  use crate::support::MapFnFrom;
 @@ -604,7 +605,10 @@ pub type UseCounterCallback =
    unsafe extern "C" fn(&mut Isolate, UseCounterFeature);
- 
+
  unsafe extern "C" {
 -  fn v8__Isolate__New(params: *const raw::CreateParams) -> *mut RealIsolate;
 +  fn v8__Isolate__New(
@@ -62,7 +62,7 @@ index f98d877..a6dfea4 100644
 @@ -906,10 +910,10 @@ impl Isolate {
      )
    }
- 
+
 -  fn new_impl(params: CreateParams) -> *mut RealIsolate {
 +  fn new_impl(group: &IsolateGroup, params: CreateParams) -> *mut RealIsolate {
      crate::V8::assert_initialized();
@@ -94,7 +94,7 @@ index f98d877..a6dfea4 100644
 +  ) -> OwnedIsolate {
 +    OwnedIsolate::new(Self::new_impl(group, params))
    }
- 
+
    #[allow(clippy::new_ret_no_self)]
 diff --git a/src/isolate_group.rs b/src/isolate_group.rs
 new file mode 100644
@@ -217,7 +217,7 @@ index f2a821c..1be18c0 100644
 @@ -624,6 +624,43 @@ fn microtasks() {
    }
  }
- 
+
 +#[test]
 +fn isolate_groups() {
 +  let _setup_guard = setup::parallel_test();
