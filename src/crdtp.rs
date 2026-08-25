@@ -4,8 +4,12 @@ use crate::support::CxxVTable;
 use crate::support::Opaque;
 use std::cell::UnsafeCell;
 use std::ffi::CString;
+use std::ffi::c_void;
 use std::mem::MaybeUninit;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::pin::Pin;
+use std::ptr::NonNull;
 
 unsafe extern "C" {
   fn crdtp__FrontendChannel__BASE__CONSTRUCT(
@@ -18,8 +22,13 @@ unsafe extern "C" {
     out: *mut CppVecU8,
   );
 
-  fn crdtp__Dispatchable__new(data: *const u8, len: usize)
-  -> *mut Dispatchable;
+  fn crdtp__Dispatchable__new(
+    data: *const u8,
+    len: usize,
+    associated_data: *const u8,
+    associated_data_len: usize,
+    fallthrough_callback: *mut c_void,
+  ) -> *mut Dispatchable;
   fn crdtp__Dispatchable__DELETE(this: *mut Dispatchable);
   fn crdtp__Dispatchable__ok(this: *const Dispatchable) -> bool;
   fn crdtp__Dispatchable__callId(this: *const Dispatchable) -> i32;
@@ -33,6 +42,12 @@ unsafe extern "C" {
   );
   fn crdtp__Dispatchable__paramsLen(this: *const Dispatchable) -> usize;
   fn crdtp__Dispatchable__paramsCopy(this: *const Dispatchable, out: *mut u8);
+  fn crdtp__Dispatchable__associatedDataLen(this: *const Dispatchable)
+  -> usize;
+  fn crdtp__Dispatchable__associatedDataCopy(
+    this: *const Dispatchable,
+    out: *mut u8,
+  );
 
   fn crdtp__DispatchResponse__Success() -> *mut DispatchResponseWrapper;
   fn crdtp__DispatchResponse__FallThrough() -> *mut DispatchResponseWrapper;
@@ -85,14 +100,8 @@ unsafe extern "C" {
   ) -> *mut RawFrontendChannel;
   fn crdtp__UberDispatcher__Dispatch(
     this: *mut UberDispatcher,
-    dispatchable: *const Dispatchable,
-  ) -> *mut DispatchResultWrapper;
-
-  fn crdtp__DispatchResult__DELETE(this: *mut DispatchResultWrapper);
-  fn crdtp__DispatchResult__MethodFound(
-    this: *const DispatchResultWrapper,
-  ) -> bool;
-  fn crdtp__DispatchResult__Run(this: *mut DispatchResultWrapper);
+    dispatchable: *mut Dispatchable,
+  );
 
   fn crdtp__vec_u8__new() -> *mut CppVecU8;
   fn crdtp__vec_u8__DELETE(this: *mut CppVecU8);
@@ -147,6 +156,51 @@ unsafe extern "C" {
 #[repr(C)]
 pub struct Dispatchable(Opaque);
 
+/// An owning handle to a [`Dispatchable`].
+///
+/// The serialized message and associated data are borrowed by the underlying
+/// C++ object, so this handle keeps both buffers alive for as long as the
+/// dispatchable can be accessed.
+pub struct OwnedDispatchable {
+  ptr: NonNull<Dispatchable>,
+  _cbor_data: Box<[u8]>,
+  _associated_data: Box<[u8]>,
+}
+
+impl Deref for OwnedDispatchable {
+  type Target = Dispatchable;
+
+  fn deref(&self) -> &Self::Target {
+    unsafe { self.ptr.as_ref() }
+  }
+}
+
+impl DerefMut for OwnedDispatchable {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    unsafe { self.ptr.as_mut() }
+  }
+}
+
+impl AsRef<Dispatchable> for OwnedDispatchable {
+  fn as_ref(&self) -> &Dispatchable {
+    self
+  }
+}
+
+impl AsMut<Dispatchable> for OwnedDispatchable {
+  fn as_mut(&mut self) -> &mut Dispatchable {
+    self
+  }
+}
+
+impl Drop for OwnedDispatchable {
+  fn drop(&mut self) {
+    unsafe {
+      crdtp__Dispatchable__DELETE(self.ptr.as_ptr());
+    }
+  }
+}
+
 #[repr(C)]
 struct DispatchResponseWrapper(Opaque);
 
@@ -154,10 +208,19 @@ struct DispatchResponseWrapper(Opaque);
 pub struct UberDispatcher(Opaque);
 
 #[repr(C)]
-struct DispatchResultWrapper(Opaque);
+pub(crate) struct CppVecU8(Opaque);
 
-#[repr(C)]
-struct CppVecU8(Opaque);
+impl CppVecU8 {
+  pub(crate) unsafe fn take_from_raw(ptr: *mut Self) -> Vec<u8> {
+    unsafe {
+      let len = crdtp__vec_u8__size(ptr);
+      let mut result = vec![0u8; len];
+      crdtp__vec_u8__copy(ptr, result.as_mut_ptr());
+      crdtp__vec_u8__DELETE(ptr);
+      result
+    }
+  }
+}
 
 #[repr(C)]
 struct RawSerializable(Opaque);
@@ -174,11 +237,7 @@ impl Serializable {
     unsafe {
       let vec = crdtp__vec_u8__new();
       crdtp__Serializable__AppendSerialized(self.ptr, vec);
-      let len = crdtp__vec_u8__size(vec);
-      let mut result = vec![0u8; len];
-      crdtp__vec_u8__copy(vec, result.as_mut_ptr());
-      crdtp__vec_u8__DELETE(vec);
-      result
+      CppVecU8::take_from_raw(vec)
     }
   }
 
@@ -198,10 +257,48 @@ impl Drop for Serializable {
 }
 
 impl Dispatchable {
-  pub fn new(cbor_data: &[u8]) -> Box<Self> {
+  #[allow(clippy::new_ret_no_self)]
+  pub fn new(cbor_data: &[u8]) -> OwnedDispatchable {
+    Self::new_inner(cbor_data, &[], std::ptr::null_mut())
+  }
+
+  /// Creates a dispatchable with per-message associated data and a callback
+  /// that receives commands which fall through the dispatcher.
+  ///
+  /// The callback may outlive this `Dispatchable` when an asynchronous command
+  /// takes ownership of it.
+  pub fn new_with_fallthrough(
+    cbor_data: &[u8],
+    associated_data: &[u8],
+    fallthrough_callback: impl FnMut(i32, &[u8], &[u8], &[u8]) + 'static,
+  ) -> OwnedDispatchable {
+    let callback = Box::new(FallthroughCallbackData {
+      callback: Box::new(fallthrough_callback),
+    });
+    let callback = Box::into_raw(callback).cast::<c_void>();
+    Self::new_inner(cbor_data, associated_data, callback)
+  }
+
+  fn new_inner(
+    cbor_data: &[u8],
+    associated_data: &[u8],
+    fallthrough_callback: *mut c_void,
+  ) -> OwnedDispatchable {
+    let cbor_data: Box<[u8]> = cbor_data.into();
+    let associated_data: Box<[u8]> = associated_data.into();
     unsafe {
-      let ptr = crdtp__Dispatchable__new(cbor_data.as_ptr(), cbor_data.len());
-      Box::from_raw(ptr)
+      let ptr = crdtp__Dispatchable__new(
+        cbor_data.as_ptr(),
+        cbor_data.len(),
+        associated_data.as_ptr(),
+        associated_data.len(),
+        fallthrough_callback,
+      );
+      OwnedDispatchable {
+        ptr: NonNull::new(ptr).unwrap(),
+        _cbor_data: cbor_data,
+        _associated_data: associated_data,
+      }
     }
   }
 
@@ -247,13 +344,57 @@ impl Dispatchable {
       buf
     }
   }
+
+  pub fn associated_data(&self) -> Vec<u8> {
+    unsafe {
+      let len = crdtp__Dispatchable__associatedDataLen(self);
+      let mut buf = vec![0u8; len];
+      crdtp__Dispatchable__associatedDataCopy(self, buf.as_mut_ptr());
+      buf
+    }
+  }
 }
 
-impl Drop for Dispatchable {
-  fn drop(&mut self) {
-    unsafe {
-      crdtp__Dispatchable__DELETE(self);
+type FallthroughCallback = Box<dyn FnMut(i32, &[u8], &[u8], &[u8])>;
+
+struct FallthroughCallbackData {
+  callback: FallthroughCallback,
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn crdtp__FallthroughCallback__Run(
+  callback: *mut c_void,
+  call_id: i32,
+  method_data: *const u8,
+  method_len: usize,
+  message_data: *const u8,
+  message_len: usize,
+  associated_data: *const u8,
+  associated_data_len: usize,
+) {
+  unsafe {
+    unsafe fn as_slice<'a>(data: *const u8, len: usize) -> &'a [u8] {
+      if len == 0 {
+        &[]
+      } else {
+        unsafe { std::slice::from_raw_parts(data, len) }
+      }
     }
+
+    let callback = &mut *(callback as *mut FallthroughCallbackData);
+    (callback.callback)(
+      call_id,
+      as_slice(method_data, method_len),
+      as_slice(message_data, message_len),
+      as_slice(associated_data, associated_data_len),
+    );
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn crdtp__FallthroughCallback__Drop(callback: *mut c_void) {
+  unsafe {
+    drop(Box::from_raw(callback as *mut FallthroughCallbackData));
   }
 }
 
@@ -382,8 +523,6 @@ pub trait FrontendChannelImpl {
   fn send_protocol_response(&mut self, call_id: i32, message: Serializable);
   /// Send a notification (no call_id).
   fn send_protocol_notification(&mut self, message: Serializable);
-  /// Indicate that the message should be handled by another layer.
-  fn fall_through(&mut self, call_id: i32, method: &[u8], message: &[u8]);
   /// Flush any queued notifications.
   fn flush_protocol_notifications(&mut self);
 }
@@ -454,57 +593,12 @@ unsafe extern "C" fn crdtp__FrontendChannel__BASE__sendProtocolNotification(
 }
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn crdtp__FrontendChannel__BASE__fallThrough(
-  this: *mut RawFrontendChannel,
-  call_id: i32,
-  method_data: *const u8,
-  method_len: usize,
-  message_data: *const u8,
-  message_len: usize,
-) {
-  unsafe {
-    let channel = FrontendChannel::from_raw(this);
-    let method = std::slice::from_raw_parts(method_data, method_len);
-    let message = std::slice::from_raw_parts(message_data, message_len);
-    channel.imp.fall_through(call_id, method, message);
-  }
-}
-
-#[unsafe(no_mangle)]
 unsafe extern "C" fn crdtp__FrontendChannel__BASE__flushProtocolNotifications(
   this: *mut RawFrontendChannel,
 ) {
   unsafe {
     let channel = FrontendChannel::from_raw(this);
     channel.imp.flush_protocol_notifications();
-  }
-}
-
-/// Result of dispatching a protocol message through UberDispatcher.
-pub struct DispatchResult {
-  ptr: *mut DispatchResultWrapper,
-}
-
-impl DispatchResult {
-  /// Returns true if a handler was found for the method.
-  pub fn method_found(&self) -> bool {
-    unsafe { crdtp__DispatchResult__MethodFound(self.ptr) }
-  }
-
-  /// Run the dispatched handler.
-  pub fn run(self) {
-    unsafe {
-      crdtp__DispatchResult__Run(self.ptr);
-    }
-    // Drop will call crdtp__DispatchResult__DELETE to free the wrapper.
-  }
-}
-
-impl Drop for DispatchResult {
-  fn drop(&mut self) {
-    unsafe {
-      crdtp__DispatchResult__DELETE(self.ptr);
-    }
   }
 }
 
@@ -517,11 +611,10 @@ impl UberDispatcher {
     }
   }
 
-  /// Dispatch a protocol message.
-  pub fn dispatch(&mut self, dispatchable: &Dispatchable) -> DispatchResult {
+  /// Dispatch a protocol message immediately.
+  pub fn dispatch(&mut self, dispatchable: &mut Dispatchable) {
     unsafe {
-      let ptr = crdtp__UberDispatcher__Dispatch(self, dispatchable);
-      DispatchResult { ptr }
+      crdtp__UberDispatcher__Dispatch(self, dispatchable);
     }
   }
 }
@@ -540,11 +633,7 @@ pub fn json_to_cbor(json: &[u8]) -> Option<Vec<u8>> {
     let vec = crdtp__vec_u8__new();
     let ok = crdtp__json__ConvertJSONToCBOR(json.as_ptr(), json.len(), vec);
     if ok {
-      let len = crdtp__vec_u8__size(vec);
-      let mut result = vec![0u8; len];
-      crdtp__vec_u8__copy(vec, result.as_mut_ptr());
-      crdtp__vec_u8__DELETE(vec);
-      Some(result)
+      Some(CppVecU8::take_from_raw(vec))
     } else {
       crdtp__vec_u8__DELETE(vec);
       None
@@ -558,11 +647,7 @@ pub fn cbor_to_json(cbor: &[u8]) -> Option<Vec<u8>> {
     let vec = crdtp__vec_u8__new();
     let ok = crdtp__json__ConvertCBORToJSON(cbor.as_ptr(), cbor.len(), vec);
     if ok {
-      let len = crdtp__vec_u8__size(vec);
-      let mut result = vec![0u8; len];
-      crdtp__vec_u8__copy(vec, result.as_mut_ptr());
-      crdtp__vec_u8__DELETE(vec);
-      Some(result)
+      Some(CppVecU8::take_from_raw(vec))
     } else {
       crdtp__vec_u8__DELETE(vec);
       None
@@ -626,16 +711,13 @@ pub fn create_notification(
 
 /// Trait for implementing a domain-specific protocol dispatcher.
 ///
-/// The `dispatch` method is called in two phases:
-/// 1. **Probe phase** (`dispatchable` is `None`): Return `true` if this
-///    domain handles the given command name.
-/// 2. **Execute phase** (`dispatchable` is `Some`): Handle the command
-///    and send a response via the `DomainDispatcherHandle`.
+/// The `dispatch` method executes the command immediately and returns whether
+/// the command was handled.
 pub trait DomainDispatcherImpl {
   fn dispatch(
     &mut self,
     command: &[u8],
-    dispatchable: Option<&Dispatchable>,
+    dispatchable: &Dispatchable,
     handle: &DomainDispatcherHandle,
   ) -> bool;
 }
@@ -730,18 +812,13 @@ unsafe extern "C" fn crdtp__DomainDispatcher__BASE__Dispatch(
   rust_dispatcher: *mut std::ffi::c_void,
   command_data: *const u8,
   command_len: usize,
-  dispatchable: *const Dispatchable,
+  dispatchable: &Dispatchable,
 ) -> bool {
   unsafe {
     let dd = &mut *(rust_dispatcher as *mut DomainDispatcherData);
     let command = std::slice::from_raw_parts(command_data, command_len);
     let handle = DomainDispatcherHandle { ptr: dd.ptr };
-    let dispatchable_ref = if dispatchable.is_null() {
-      None
-    } else {
-      Some(&*dispatchable)
-    };
-    dd.imp.dispatch(command, dispatchable_ref, &handle)
+    dd.imp.dispatch(command, dispatchable, &handle)
   }
 }
 
