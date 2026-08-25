@@ -1,10 +1,10 @@
 diff --git a/BUILD.gn b/BUILD.gn
-index 5d7b05e..2b1b434 100644
+index 9b16d47..73df388 100644
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@ -5,7 +5,7 @@ declare_args() {
-   rusty_v8_enable_simdutf = false
- }
+@@ -1,7 +1,7 @@
+ # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+ import("//build/config/host_byteorder.gni")
  
 -static_library("rusty_v8") {
 +static_library("kv8") {

@@ -3,7 +3,7 @@ import { Command } from '@cliffy/command';
 
 import { TARGET_DIR } from './_common.ts';
 
-const FEATURES = ['v8_enable_pointer_compression', 'simdutf'];
+const FEATURES = ['v8_enable_pointer_compression'];
 
 await new Command()
 	.option('--target <target:string>', 'rustc target', { required: true })

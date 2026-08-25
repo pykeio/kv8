@@ -59,7 +59,7 @@ index f98d877..a6dfea4 100644
    fn v8__Isolate__Dispose(this: *mut RealIsolate);
    fn v8__Isolate__GetNumberOfDataSlots(this: *const RealIsolate) -> u32;
    fn v8__Isolate__GetData(
-@@ -906,10 +910,10 @@ impl Isolate {
+@@ -996,11 +996,11 @@ impl Isolate {
      )
    }
  
@@ -67,11 +67,12 @@ index f98d877..a6dfea4 100644
 +  fn new_impl(group: &IsolateGroup, params: CreateParams) -> *mut RealIsolate {
      crate::V8::assert_initialized();
      let (raw_create_params, create_param_allocations) = params.finalize();
+     let has_embedder_cpp_heap = !raw_create_params.cpp_heap.is_null();
 -    let cxx_isolate = unsafe { v8__Isolate__New(&raw_create_params) };
 +    let cxx_isolate = unsafe { v8__Isolate__New(group, &raw_create_params) };
      let mut isolate = unsafe { Isolate::from_raw_ptr(cxx_isolate) };
      isolate.initialize(create_param_allocations);
-     cxx_isolate
+     isolate.get_annex_mut().has_embedder_cpp_heap = has_embedder_cpp_heap;
 @@ -929,7 +933,22 @@ impl Isolate {
    /// V8::initialize() must have run prior to this.
    #[allow(clippy::new_ret_no_self)]
@@ -194,22 +195,22 @@ diff --git a/src/lib.rs b/src/lib.rs
 index f78efdc..b0c1a84 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -50,6 +50,7 @@ mod handle;
+@@ -50,6 +49,7 @@ mod handle;
  pub mod icu;
  mod isolate;
  mod isolate_create_params;
 +mod isolate_group;
+ mod locker;
  mod microtask;
  mod module;
- mod name;
-@@ -136,6 +137,7 @@ pub use isolate::UseCounterCallback;
+@@ -140,6 +140,7 @@ pub use isolate::UseCounterCallback;
  pub use isolate::UseCounterFeature;
  pub use isolate::WasmAsyncSuccess;
  pub use isolate_create_params::CreateParams;
 +pub use isolate_group::IsolateGroup;
+ pub use locker::Locker;
+ pub use locker::SharedIsolate;
  pub use microtask::MicrotaskQueue;
- pub use module::*;
- pub use object::*;
 diff --git a/tests/test_api.rs b/tests/test_api.rs
 index f2a821c..1be18c0 100644
 --- a/tests/test_api.rs
