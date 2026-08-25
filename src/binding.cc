@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 #include "cppgc/allocation.h"
 #include "cppgc/persistent.h"
@@ -14,9 +16,12 @@
 #include "libplatform/libplatform.h"
 #include "support.h"
 #include "unicode/locid.h"
+#include "unicode/timezone.h"
+#include "unicode/unistr.h"
 #include "v8-callbacks.h"
 #include "v8-cppgc.h"
 #include "v8-fast-api-calls.h"
+#include "v8-inspector-protocol.h"
 #include "v8-inspector.h"
 #include "v8-internal.h"
 #include "v8-platform.h"
@@ -56,6 +61,9 @@ static_assert(sizeof(v8::PromiseRejectMessage) == sizeof(size_t) * 3,
               "PromiseRejectMessage size mismatch");
 
 static_assert(sizeof(v8::Locker) == sizeof(size_t) * 2, "Locker size mismatch");
+
+static_assert(sizeof(v8::Unlocker) == sizeof(size_t) * 1,
+              "Unlocker size mismatch");
 
 static_assert(sizeof(v8::ScriptCompiler::CompilationDetails) ==
                   sizeof(int64_t) * 3,
@@ -193,9 +201,30 @@ void v8__Isolate__Dispose(v8::Isolate* isolate) { isolate->Dispose(); }
 
 void v8__Isolate__Enter(v8::Isolate* isolate) { isolate->Enter(); }
 
+void v8__Locker__CONSTRUCT(uninit_t<v8::Locker>* buf, v8::Isolate* isolate) {
+  construct_in_place<v8::Locker>(buf, isolate);
+}
+
+void v8__Locker__DESTRUCT(v8::Locker* self) { self->~Locker(); }
+
+void v8__Unlocker__CONSTRUCT(uninit_t<v8::Unlocker>* buf,
+                             v8::Isolate* isolate) {
+  construct_in_place<v8::Unlocker>(buf, isolate);
+}
+
+void v8__Unlocker__DESTRUCT(v8::Unlocker* self) { self->~Unlocker(); }
+
+bool v8__Locker__IsLocked(v8::Isolate* isolate) {
+  return v8::Locker::IsLocked(isolate);
+}
+
 void v8__Isolate__Exit(v8::Isolate* isolate) { isolate->Exit(); }
 
 v8::Isolate* v8__Isolate__GetCurrent() { return v8::Isolate::GetCurrent(); }
+
+v8::Isolate* v8__Isolate__TryGetCurrent() {
+  return v8::Isolate::TryGetCurrent();
+}
 
 const v8::Data* v8__Isolate__GetCurrentHostDefinedOptions(
     v8::Isolate* isolate) {
@@ -328,6 +357,12 @@ void v8__Isolate__SetHostCreateShadowRealmContextCallback(
 void v8__Isolate__SetUseCounterCallback(
     v8::Isolate* isolate, v8::Isolate::UseCounterCallback callback) {
   isolate->SetUseCounterCallback(callback);
+}
+
+void v8__Isolate__SetModifyCodeGenerationFromStringsCallback(
+    v8::Isolate* isolate,
+    v8::ModifyCodeGenerationFromStringsCallback2 callback) {
+  isolate->SetModifyCodeGenerationFromStringsCallback(callback);
 }
 
 bool v8__Isolate__AddMessageListener(v8::Isolate* isolate,
@@ -1504,11 +1539,11 @@ void v8__ObjectTemplate__SetNativeDataProperty(
 
 void v8__ObjectTemplate__SetNamedPropertyHandler(
     const v8::ObjectTemplate& self, v8::NamedPropertyGetterCallback getter,
-    v8::NamedPropertySetterCallback setter,
+    v8::NamedPropertySetterCallbackV2 setter,
     v8::NamedPropertyQueryCallback query,
     v8::NamedPropertyDeleterCallback deleter,
     v8::NamedPropertyEnumeratorCallback enumerator,
-    v8::NamedPropertyDefinerCallback definer,
+    v8::NamedPropertyDefinerCallbackV2 definer,
     v8::NamedPropertyDescriptorCallback descriptor,
     const v8::Value* data_or_null, v8::PropertyHandlerFlags flags) {
   ptr_to_local(&self)->SetHandler(v8::NamedPropertyHandlerConfiguration(
@@ -1518,11 +1553,11 @@ void v8__ObjectTemplate__SetNamedPropertyHandler(
 
 void v8__ObjectTemplate__SetIndexedPropertyHandler(
     const v8::ObjectTemplate& self, v8::IndexedPropertyGetterCallbackV2 getter,
-    v8::IndexedPropertySetterCallbackV2 setter,
+    v8::IndexedPropertySetterCallback setter,
     v8::IndexedPropertyQueryCallbackV2 query,
     v8::IndexedPropertyDeleterCallbackV2 deleter,
     v8::IndexedPropertyEnumeratorCallback enumerator,
-    v8::IndexedPropertyDefinerCallbackV2 definer,
+    v8::IndexedPropertyDefinerCallback definer,
     v8::IndexedPropertyDescriptorCallbackV2 descriptor,
     const v8::Value* data_or_null, v8::PropertyHandlerFlags flags) {
   ptr_to_local(&self)->SetHandler(v8::IndexedPropertyHandlerConfiguration(
@@ -1541,6 +1576,13 @@ void v8__ObjectTemplate__SetAccessorProperty(const v8::ObjectTemplate& self,
 
 void v8__ObjectTemplate__SetImmutableProto(const v8::ObjectTemplate& self) {
   return ptr_to_local(&self)->SetImmutableProto();
+}
+
+void v8__ObjectTemplate__SetCallAsFunctionHandler(
+    const v8::ObjectTemplate& self, v8::FunctionCallback callback,
+    const v8::Value* data_or_null) {
+  ptr_to_local(&self)->SetCallAsFunctionHandler(callback,
+                                                ptr_to_local(data_or_null));
 }
 
 const v8::Object* v8__Object__New(v8::Isolate* isolate) {
@@ -1856,6 +1898,31 @@ void v8__Object__GetRealNamedPropertyAttributes(
 const v8::Array* v8__Object__PreviewEntries(const v8::Object& self,
                                             bool* is_key_value) {
   return maybe_local_to_ptr(ptr_to_local(&self)->PreviewEntries(is_key_value));
+}
+
+bool v8__Object__IsCallable(const v8::Object& self) {
+  return ptr_to_local(&self)->IsCallable();
+}
+
+bool v8__Object__IsConstructor(const v8::Object& self) {
+  return ptr_to_local(&self)->IsConstructor();
+}
+
+const v8::Value* v8__Object__CallAsFunction(const v8::Object& self,
+                                            const v8::Context& context,
+                                            const v8::Value& recv, int argc,
+                                            const v8::Value* const argv[]) {
+  return maybe_local_to_ptr(ptr_to_local(&self)->CallAsFunction(
+      ptr_to_local(&context), ptr_to_local(&recv), argc,
+      const_ptr_array_to_local_array(argv)));
+}
+
+const v8::Value* v8__Object__CallAsConstructor(const v8::Object& self,
+                                               const v8::Context& context,
+                                               int argc,
+                                               const v8::Value* const argv[]) {
+  return maybe_local_to_ptr(ptr_to_local(&self)->CallAsConstructor(
+      ptr_to_local(&context), argc, const_ptr_array_to_local_array(argv)));
 }
 
 const v8::Array* v8__Array__New(v8::Isolate* isolate, int length) {
@@ -2268,13 +2335,39 @@ const v8::Value* v8__Context__GetContinuationPreservedEmbedderData(
   return local_to_ptr(value);
 }
 
-v8::MicrotaskQueue* v8__MicrotaskQueue__New(v8::Isolate* isolate,
-                                            v8::MicrotasksPolicy policy) {
-  return v8::MicrotaskQueue::New(isolate, policy).release();
+class RustyMicrotaskQueueHandle {
+ public:
+  RustyMicrotaskQueueHandle(v8::Isolate* isolate, v8::MicrotasksPolicy policy)
+      : queue_(v8::MicrotaskQueue::New(isolate, policy)) {}
+
+  v8::MicrotaskQueue* Get() const {
+#ifdef V8_CPPGC_MICROTASK_QUEUE
+    return queue_.Get();
+#else
+    return queue_.get();
+#endif
+  }
+
+ private:
+#ifdef V8_CPPGC_MICROTASK_QUEUE
+  cppgc::Persistent<v8::MicrotaskQueue> queue_;
+#else
+  std::unique_ptr<v8::MicrotaskQueue> queue_;
+#endif
+};
+
+RustyMicrotaskQueueHandle* v8__MicrotaskQueueHandle__New(
+    v8::Isolate* isolate, v8::MicrotasksPolicy policy) {
+  return new RustyMicrotaskQueueHandle(isolate, policy);
 }
 
-void v8__MicrotaskQueue__DESTRUCT(v8::MicrotaskQueue* self) {
-  self->~MicrotaskQueue();
+void v8__MicrotaskQueueHandle__DELETE(RustyMicrotaskQueueHandle* self) {
+  delete self;
+}
+
+v8::MicrotaskQueue* v8__MicrotaskQueueHandle__Get(
+    const RustyMicrotaskQueueHandle* self) {
+  return self->Get();
 }
 
 void v8__MicrotaskQueue__PerformCheckpoint(v8::Isolate* isolate,
@@ -2807,9 +2900,17 @@ const v8::UnboundScript* v8__Script__GetUnboundScript(
   return local_to_ptr(ptr_to_local(&script)->GetUnboundScript());
 }
 
+int v8__Script__ScriptId(const v8::Script& script) {
+  return ptr_to_local(&script)->ScriptId();
+}
+
 const v8::Script* v8__UnboundScript__BindToCurrentContext(
     const v8::UnboundScript& unbound_script) {
   return local_to_ptr(ptr_to_local(&unbound_script)->BindToCurrentContext());
+}
+
+int v8__UnboundScript__ScriptId(const v8::UnboundScript& unbound_script) {
+  return ptr_to_local(&unbound_script)->ScriptId();
 }
 
 v8::ScriptCompiler::CachedData* v8__UnboundScript__CreateCodeCache(
@@ -3481,6 +3582,49 @@ void v8_inspector__V8InspectorSession__dispatchProtocolMessage(
   self->dispatchProtocolMessage(message);
 }
 
+void v8_inspector__V8InspectorSession__releaseObjectGroup(
+    v8_inspector::V8InspectorSession* self,
+    v8_inspector::StringView object_group) {
+  self->releaseObjectGroup(object_group);
+}
+
+v8_inspector::protocol::Runtime::API::RemoteObject*
+v8_inspector__V8InspectorSession__wrapObject(
+    v8_inspector::V8InspectorSession* self, const v8::Context* context,
+    const v8::Value* value, v8_inspector::StringView object_group,
+    bool generate_preview) {
+  return self
+      ->wrapObject(ptr_to_local(context), ptr_to_local(value), object_group,
+                   generate_preview)
+      .release();
+}
+
+bool v8_inspector__V8InspectorSession__unwrapObject(
+    v8_inspector::V8InspectorSession* self, v8_inspector::StringBuffer** error,
+    v8_inspector::StringView object_id, const v8::Value** value,
+    const v8::Context** context, v8_inspector::StringBuffer** object_group) {
+  std::unique_ptr<v8_inspector::StringBuffer> error_buffer;
+  v8::Local<v8::Value> local_value;
+  v8::Local<v8::Context> local_context;
+  std::unique_ptr<v8_inspector::StringBuffer> object_group_buffer;
+  bool success = self->unwrapObject(&error_buffer, object_id, &local_value,
+                                    &local_context, &object_group_buffer);
+  if (!success) {
+    *error = error_buffer.release();
+    return false;
+  }
+
+  *value = local_to_ptr(local_value);
+  *context = local_to_ptr(local_context);
+  *object_group = object_group_buffer.release();
+  return true;
+}
+
+void v8_inspector__RemoteObject__DELETE(
+    v8_inspector::protocol::Runtime::API::RemoteObject* self) {
+  delete self;
+}
+
 void v8_inspector__V8InspectorSession__schedulePauseOnNextStatement(
     v8_inspector::V8InspectorSession* self, v8_inspector::StringView reason,
     v8_inspector::StringView detail) {
@@ -3492,6 +3636,62 @@ void v8_inspector__V8InspectorSession__cancelPauseOnNextStatement(
   self->cancelPauseOnNextStatement();
 }
 }  // extern "C"
+
+extern "C" {
+const v8::Value* v8_inspector__V8InspectorSession__Inspectable__BASE__get(
+    void* rust_impl, const v8::Context* context);
+void v8_inspector__V8InspectorSession__Inspectable__BASE__DROP(void* rust_impl);
+}
+
+class v8_inspector__V8InspectorSession__Inspectable__BASE final
+    : public v8_inspector::V8InspectorSession::Inspectable {
+ public:
+  explicit v8_inspector__V8InspectorSession__Inspectable__BASE(void* rust_impl)
+      : rust_impl_(rust_impl) {}
+
+  ~v8_inspector__V8InspectorSession__Inspectable__BASE() override {
+    v8_inspector__V8InspectorSession__Inspectable__BASE__DROP(rust_impl_);
+  }
+
+  v8::Local<v8::Value> get(v8::Local<v8::Context> context) override {
+    // The Rust CallbackScope relies on `NewCallbackScope for Local<Context>`
+    // having `NEEDS_SCOPE == false` and must not open its own HandleScope.
+    // Handles created by the Rust implementation are allocated in this scope
+    // and must be escaped here. Opening a nested HandleScope in Rust would
+    // destroy that scope before Escape uses its handle, causing a
+    // use-after-free.
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    if (isolate == nullptr) return v8::Local<v8::Value>();
+    v8::EscapableHandleScope handle_scope(isolate);
+    v8::Context::Scope context_scope(context);
+    return handle_scope.Escape(
+        ptr_to_local(v8_inspector__V8InspectorSession__Inspectable__BASE__get(
+            rust_impl_, local_to_ptr(context))));
+  }
+
+ private:
+  void* rust_impl_;
+};
+
+extern "C" {
+v8_inspector::V8InspectorSession::Inspectable*
+v8_inspector__V8InspectorSession__Inspectable__NEW(void* rust_impl) {
+  return new v8_inspector__V8InspectorSession__Inspectable__BASE(rust_impl);
+}
+
+void v8_inspector__V8InspectorSession__Inspectable__DELETE(
+    v8_inspector::V8InspectorSession::Inspectable* inspectable) {
+  delete inspectable;
+}
+
+void v8_inspector__V8InspectorSession__addInspectedObject(
+    v8_inspector::V8InspectorSession* self,
+    v8_inspector::V8InspectorSession::Inspectable* inspectable) {
+  self->addInspectedObject(
+      std::unique_ptr<v8_inspector::V8InspectorSession::Inspectable>(
+          inspectable));
+}
+}
 
 struct v8_inspector__V8Inspector__Channel__BASE
     : public v8_inspector::V8Inspector::Channel {
@@ -3551,6 +3751,13 @@ void v8_inspector__V8InspectorClient__BASE__consoleAPIMessage(
     const v8_inspector::StringView& message,
     const v8_inspector::StringView& url, unsigned lineNumber,
     unsigned columnNumber, v8_inspector::V8StackTrace* stackTrace);
+v8_inspector::StringBuffer* v8_inspector__V8InspectorClient__BASE__valueSubtype(
+    v8_inspector::V8InspectorClient* self, v8::Context* context,
+    v8::Value* value);
+v8_inspector::StringBuffer*
+v8_inspector__V8InspectorClient__BASE__descriptionForValueSubtype(
+    v8_inspector::V8InspectorClient* self, v8::Context* context,
+    v8::Value* value);
 v8::Context* v8_inspector__V8InspectorClient__BASE__ensureDefaultContextInGroup(
     v8_inspector::V8InspectorClient* self, int context_group_id);
 v8_inspector::StringBuffer*
@@ -3587,6 +3794,24 @@ struct v8_inspector__V8InspectorClient__BASE
     v8_inspector__V8InspectorClient__BASE__consoleAPIMessage(
         this, contextGroupId, level, message, url, lineNumber, columnNumber,
         stackTrace);
+  }
+  std::unique_ptr<v8_inspector::StringBuffer> valueSubtype(
+      v8::Local<v8::Value> value) override {
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    if (isolate == nullptr) return nullptr;
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return nullptr;
+    v8_inspector::StringBuffer* b =
+        v8_inspector__V8InspectorClient__BASE__valueSubtype(
+            this, local_to_ptr(context), local_to_ptr(value));
+    return std::unique_ptr<v8_inspector::StringBuffer>(b);
+  }
+  std::unique_ptr<v8_inspector::StringBuffer> descriptionForValueSubtype(
+      v8::Local<v8::Context> context, v8::Local<v8::Value> value) override {
+    v8_inspector::StringBuffer* b =
+        v8_inspector__V8InspectorClient__BASE__descriptionForValueSubtype(
+            this, local_to_ptr(context), local_to_ptr(value));
+    return std::unique_ptr<v8_inspector::StringBuffer>(b);
   }
   v8::Local<v8::Context> ensureDefaultContextInGroup(
       int context_group_id) override {
@@ -3719,6 +3944,10 @@ const v8::Value* v8__Module__Evaluate(const v8::Module& self,
 
 bool v8__Module__IsGraphAsync(const v8::Module& self) {
   return ptr_to_local(&self)->IsGraphAsync();
+}
+
+bool v8__Module__HasTopLevelAwait(const v8::Module& self) {
+  return ptr_to_local(&self)->HasTopLevelAwait();
 }
 
 bool v8__Module__IsSourceTextModule(const v8::Module& self) {
@@ -4300,8 +4529,8 @@ void v8__CompiledWasmModule__DELETE(v8::CompiledWasmModule* self) {
 extern "C" {
 
 size_t icu_get_default_locale(char* output, size_t output_len) {
-  const icu_77::Locale& default_locale = icu::Locale::getDefault();
-  icu_77::CheckedArrayByteSink sink(output, static_cast<uint32_t>(output_len));
+  const icu::Locale& default_locale = icu::Locale::getDefault();
+  icu::CheckedArrayByteSink sink(output, static_cast<uint32_t>(output_len));
   UErrorCode status = U_ZERO_ERROR;
   default_locale.toLanguageTag(sink, status);
   assert(status == U_ZERO_ERROR);
@@ -4312,6 +4541,39 @@ size_t icu_get_default_locale(char* output, size_t output_len) {
 void icu_set_default_locale(const char* locale) {
   UErrorCode status = U_ZERO_ERROR;
   icu::Locale::setDefault(icu::Locale(locale), status);
+}
+
+size_t icu_get_default_time_zone(char* output, size_t output_len) {
+  icu::UnicodeString id;
+  std::unique_ptr<icu::TimeZone> tz(icu::TimeZone::createDefault());
+  tz->getID(id);
+  icu::CheckedArrayByteSink sink(output, static_cast<uint32_t>(output_len));
+  id.toUTF8(sink);
+  assert(!sink.Overflowed());
+  // Deliberately not `NumberOfBytesAppended()`: that counts bytes the sink was
+  // asked to write, so on overflow it exceeds `output_len` and the caller would
+  // read past the buffer (the assert above is compiled out in release builds).
+  return sink.NumberOfBytesWritten();
+}
+
+// NOTE: the parameter is deliberately not named `timezone`; glibc's <time.h>
+// declares a global with that name and the build uses -Werror,-Wshadow.
+bool icu_set_default_time_zone(const char* time_zone_id) {
+  // `createTimeZone()` never fails: an id it does not recognize yields the
+  // special "unknown" zone (which behaves as GMT). Detect that and report it
+  // instead of silently installing GMT.
+  std::unique_ptr<icu::TimeZone> tz(icu::TimeZone::createTimeZone(
+      icu::UnicodeString::fromUTF8(time_zone_id)));
+  icu::UnicodeString id;
+  tz->getID(id);
+  if (id == icu::UnicodeString(UCAL_UNKNOWN_ZONE_ID, -1, US_INV)) {
+    return false;
+  }
+  // Takes ownership of the created TimeZone and installs it as the process
+  // wide default, so ICU (and therefore V8's Date implementation) resolves
+  // the given id regardless of how the host reports its time zone.
+  icu::TimeZone::adoptDefault(tz.release());
+  return true;
 }
 
 }  // extern "C"
@@ -4578,10 +4840,9 @@ RustObj* cppgc__WeakPersistent__Get(cppgc::WeakPersistent<RustObj>* self) {
 }  // extern "C"
 
 // =============================================================================
-// simdutf bindings (gated behind RUSTY_V8_ENABLE_SIMDUTF)
+// simdutf bindings
 // =============================================================================
 
-#ifdef RUSTY_V8_ENABLE_SIMDUTF
 #include "third_party/simdutf/simdutf.h"
 
 struct simdutf__result {
@@ -4823,5 +5084,3 @@ size_t simdutf__binary_to_base64(const char* input, size_t length, char* output,
 }
 
 }  // extern "C"
-
-#endif  // RUSTY_V8_ENABLE_SIMDUTF
