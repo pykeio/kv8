@@ -3,24 +3,43 @@ on:
   pull_request:
     branches: [main]
     types: [closed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "152.0.0"
+        required: true
+      sha:
+        required: false
 permissions: write-all
 jobs:
   release:
-    if: github.event.pull_request.merged == true && github.head_ref == 'autoupdate'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true && github.head_ref == 'autoupdate')
     runs-on: ubuntu-slim
     steps:
       - name: Get version
         id: version
         run: |
-          TITLE="${{ github.event.pull_request.title }}"
-          VERSION="${TITLE#Update to v8 }"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            SHA="${{ inputs.sha || github.sha }}"
+          else
+            TITLE="${{ github.event.pull_request.title }}"
+            VERSION="${TITLE#Update to v8 }"
+            SHA="${{ github.event.pull_request.head.sha }}"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.version.outputs.sha }}
       - name: Get artifacts run
         id: ci_run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${{ github.event.pull_request.head.sha }}&status=success&per_page=1" --jq '.workflow_runs[0].id')
+          RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${{ steps.version.outputs.sha }}&status=success&per_page=1" --jq '.workflow_runs[0].id')
           if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
             echo "you merged a PR with a failed CI run lol"
             exit 1
@@ -32,10 +51,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/
           merge-multiple: true
-      - uses: actions/checkout@v6
       - name: Create and push tag
         run: |
-          git tag "v${{ steps.version.outputs.version }}"
+          git tag "v${{ steps.version.outputs.version }}" "${{ steps.version.outputs.sha }}"
           git push origin "v${{ steps.version.outputs.version }}"
       - name: Release
         uses: softprops/action-gh-release@v3
