@@ -1,3 +1,6 @@
+[workspace]
+members = [ "serde_kv8" ]
+
 [package]
 name = "kv8"
 version = "152.2.0"

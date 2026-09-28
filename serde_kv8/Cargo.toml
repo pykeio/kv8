@@ -1,0 +1,27 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "serde_kv8"
+version = "0.321.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+name = "serde_v8"
+path = "lib.rs"
+
+[features]
+default = [ "bigint" ]
+bigint = [ "dep:num-bigint", "dep:smallvec" ]
+
+[dependencies]
+kv8 = { path = "../", default-features = false }
+smallvec = { version = "1.16", optional = true, features = [ "union", "const_generics" ] }
+num-bigint = { version = "0.5", optional = true, default-features = false }
+serde_core = { version = "1.0", default-features = false, features = [ "alloc" ] }
+
+[dev-dependencies]
+kv8 = { path = "../" }
+serde = { version = "1.0", features = [ "derive" ] }
+serde_bytes = "0.11"
+serde_json = "1.0"
