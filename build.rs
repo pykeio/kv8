@@ -4,7 +4,7 @@ use std::{
   process::Command,
 };
 
-static RELEASE_ROOT: &str = "https://github.com/pykeio/kv8/releases/download/";
+static RELEASE_ROOT: &str = "https://github.com/pykeio/kv8/releases/download";
 
 fn main() {
   for var in ["CXXSTDLIB", "KV8_BINDING_PATH", "KV8_BUILD_DIR"] {
