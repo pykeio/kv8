@@ -5,7 +5,7 @@ import { latestCommit, resetUpstream, ROOT, TARGET_DIR, updateSrc, patch } from 
 
 const CARGO_TOML = join(ROOT, 'Cargo.toml');
 const manifest = await Deno.readTextFile(CARGO_TOML);
-const versionLine = manifest.match(/version = "(\d+\.\d+\.\d+)"/)!;
+const versionLine = manifest.match(/^version = "(\d+\.\d+\.\d+)"/)!;
 const currentVersion = versionLine[1];
 
 const [ newCommit, latestVersion ] = await latestCommit();

@@ -3,8 +3,9 @@
 [package]
 name = "serde_kv8"
 version = "0.321.0"
-edition = "2024"
-license = "MIT"
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 
 [lib]
 name = "serde_v8"

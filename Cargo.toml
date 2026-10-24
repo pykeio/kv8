@@ -1,12 +1,20 @@
 [workspace]
 members = [ "serde_kv8" ]
 
-[package]
-name = "kv8"
+[workspace.package]
 version = "152.2.0"
 license = "MIT"
 edition = "2024"
+rust-version = "1.95"
+
+[package]
+name = "kv8"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 include = ["/src", "/build.rs"]
+links = "kv8"
 
 [lib]
 name = "v8"
