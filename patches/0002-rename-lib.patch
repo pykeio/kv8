@@ -1,3 +1,10 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] Rename library to kv8
+
+For clarity
+
+---
+
 diff --git a/BUILD.gn b/BUILD.gn
 index 9b16d47..73df388 100644
 --- a/BUILD.gn

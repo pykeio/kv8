@@ -1,3 +1,14 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] Disable `Temporal` support
+
+V8's implementation of `Temporal` is backed by `temporal_rs`, which would
+require Zephyr projects to pull in the massive `temporal_capi` crate since
+we can't statically link Rust code built with a potentially different compiler.
+Since usage of `Temporal` is limited, the easiest fix is to just... not support
+it at all.
+
+---
+
 diff --git a/.gn b/.gn
 index 858a605..74b59b3 100644
 --- a/.gn

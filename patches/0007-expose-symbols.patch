@@ -1,3 +1,10 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] Expose shim symbols so dynamic link works
+
+Allows Zephyr's Dynamic V8 mode in dev to work via `kv8-dynamic`.
+
+---
+
 diff --git a/BUILD.gn b/BUILD.gn
 index 9b16d47..09e18ba 100644
 --- a/BUILD.gn

@@ -1,3 +1,12 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] Configure a namespace for abseil
+
+Zephyr projects may link to a C dependency which pulls in abseil, and there's
+a good chance those don't prefix abseil's namespace, which would lead to
+symbol conflicts.
+
+---
+
 diff --git a/third_party/abseil-cpp/absl/base/options.h b/third_party/abseil-cpp/absl/base/options.h
 index 723fbe2a..92ca20fe 100644
 --- a/third_party/abseil-cpp/absl/base/options.h

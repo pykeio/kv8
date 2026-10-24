@@ -1,3 +1,8 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] Add `IsolateGroup`
+
+---
+
 diff --git a/src/binding.cc b/src/binding.cc
 index 90dd1fd..d53c025 100644
 --- a/src/binding.cc

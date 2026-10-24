@@ -1,3 +1,10 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] Fixes for Visual Studio 18 2026
+
+stdfloat misbehaves in VS2026 for some reason I don't remember. We can build without it just fine.
+
+---
+
 diff --git a/third_party/fast_float/src/include/fast_float/float_common.h b/third_party/fast_float/src/include/fast_float/float_common.h
 index 1265d9e..c826b95 100644
 --- a/third_party/fast_float/src/include/fast_float/float_common.h

@@ -1,3 +1,10 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] Unlock Rust toolchain
+
+This is meant to match Deno's rust-toolchain.toml, so it's useless to us.
+
+---
+
 diff --git a/rust-toolchain.toml b/rust-toolchain.toml
 deleted file mode 100644
 index 0924897..0000000
