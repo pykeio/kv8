@@ -452,116 +452,123 @@ impl<T: GarbageCollected> GetRustObj<T> for *mut RustObj {
 }
 
 macro_rules! member {
-  ($( # $attr:tt )* $name:ident) => {
-    paste::paste! {
-      #[repr(transparent)]
-      struct [< $name Inner >]([u8; crate::binding:: [< cppgc__ $name _SIZE >]]);
+  (
+    $( # $attr:tt )* $name:ident;
+    Inner = $inner:ident,
+    SIZE = $size:ident,
+    construct = $construct:ident,
+    get = $get:ident,
+    assign = $assign:ident,
+    destruct = $destruct:ident,
+    trace = $trace:ident
+  ) => {
+    #[repr(transparent)]
+    struct $inner([u8; crate::binding::$size]);
 
-      impl [< $name Inner >] {
-        fn new(ptr: *mut RustObj) -> Self {
-          let mut this = std::mem::MaybeUninit::uninit();
-          unsafe {
-            [< cppgc__ $name __CONSTRUCT >](this.as_mut_ptr(), ptr);
-            this.assume_init()
-          }
-        }
-
-        #[inline(always)]
-        fn get(&self) -> *mut RustObj {
-          // Member may be a compressed pointer, so just read it from C++
-          unsafe { [< cppgc__ $name __Get >](self) }
-        }
-
-        #[inline(always)]
-        fn assign(&mut self, ptr: *mut RustObj) {
-          // Assignment has write barriers in the GC, so call into C++
-          unsafe {
-            [< cppgc__ $name __Assign >](self, ptr);
-          }
+    impl $inner {
+      fn new(ptr: *mut RustObj) -> Self {
+        let mut this = std::mem::MaybeUninit::uninit();
+        unsafe {
+          $construct(this.as_mut_ptr(), ptr);
+          this.assume_init()
         }
       }
 
-      impl Drop for [< $name Inner >] {
-        fn drop(&mut self) {
-          unsafe {
-            [< cppgc__ $name __DESTRUCT >](self);
-          }
+      #[inline(always)]
+      fn get(&self) -> *mut RustObj {
+        // Member may be a compressed pointer, so just read it from C++
+        unsafe { $get(self) }
+      }
+
+      #[inline(always)]
+      fn assign(&mut self, ptr: *mut RustObj) {
+        // Assignment has write barriers in the GC, so call into C++
+        unsafe {
+          $assign(self, ptr);
+        }
+      }
+    }
+
+    impl Drop for $inner {
+      fn drop(&mut self) {
+        unsafe {
+          $destruct(self);
+        }
+      }
+    }
+
+    $( # $attr )*
+    #[repr(transparent)]
+    pub struct $name<T: GarbageCollected> {
+      inner: $inner,
+      _phantom: PhantomData<T>,
+    }
+
+    impl<T: GarbageCollected> $name<T> {
+      #[doc = "Create a new empty "]
+      #[doc = stringify!($name)]
+      #[doc = " which may be set later."]
+      pub fn empty() -> Self {
+        Self {
+          inner: $inner::new(std::ptr::null_mut()),
+          _phantom: PhantomData,
         }
       }
 
-      $( # $attr )*
-      #[repr(transparent)]
-      pub struct $name<T: GarbageCollected> {
-        inner: [< $name Inner >],
-        _phantom: PhantomData<T>,
-      }
-
-      impl<T: GarbageCollected> $name<T> {
-        #[doc = "Create a new empty "]
-        #[doc = stringify!($name)]
-        #[doc = " which may be set later."]
-        pub fn empty() -> Self {
-          Self {
-            inner: [< $name Inner >]::new(std::ptr::null_mut()),
-            _phantom: PhantomData,
-          }
-        }
-
-        #[doc = "Create a new "]
-        #[doc = stringify!($name)]
-        #[doc = " and initialize it with an object."]
-        pub fn new(other: &impl GetRustObj<T>) -> Self {
-          Self {
-            inner: [< $name Inner >]::new(other.get_rust_obj()),
-            _phantom: PhantomData,
-          }
-        }
-
-        #[doc = "Set the object pointed to by this "]
-        #[doc = stringify!($name)]
-        #[doc = "."]
-        pub fn set(&mut self, other: &impl GetRustObj<T>) {
-          let ptr = other.get_rust_obj();
-          self.inner.assign(ptr);
-        }
-
-        #[doc = "Get the object pointed to by this "]
-        #[doc = stringify!($name)]
-        #[doc = ", returning `None` if the pointer is empty or has been garbage-collected."]
-        #[doc = ""]
-        #[doc = "# Safety"]
-        #[doc = ""]
-        #[doc = "The caller must ensure that this pointer is being traced correctly by appearing in the [`trace`](GarbageCollected::trace)"]
-        #[doc = "implementation of the object that owns the pointer. Between initializing the pointer and calling `get()`, the pointer must be reachable by the garbage collector."]
-        pub unsafe fn get(&self) -> Option<&T> {
-          let ptr = self.inner.get();
-          if ptr.is_null() {
-            None
-          } else {
-            // SAFETY: Either this is a strong reference and the pointer is valid according
-            // to the safety contract of this method, or this is a weak reference and the
-            // ptr will be null if it was collected.
-            Some(unsafe { &*get_value_from_rust_obj(ptr) })
-          }
+      #[doc = "Create a new "]
+      #[doc = stringify!($name)]
+      #[doc = " and initialize it with an object."]
+      pub fn new(other: &impl GetRustObj<T>) -> Self {
+        Self {
+          inner: $inner::new(other.get_rust_obj()),
+          _phantom: PhantomData,
         }
       }
 
-      impl<T: GarbageCollected> GetRustObj<T> for $name<T> {
-        fn get_rust_obj(&self) -> *mut RustObj {
-          self.inner.get()
-        }
+      #[doc = "Set the object pointed to by this "]
+      #[doc = stringify!($name)]
+      #[doc = "."]
+      pub fn set(&mut self, other: &impl GetRustObj<T>) {
+        let ptr = other.get_rust_obj();
+        self.inner.assign(ptr);
       }
 
-      impl<T: GarbageCollected> Traced for $name<T> {
-        fn trace(&self, visitor: &mut Visitor) {
-          unsafe { [< cppgc__Visitor__Trace__ $name >](visitor, &self.inner) }
+      #[doc = "Get the object pointed to by this "]
+      #[doc = stringify!($name)]
+      #[doc = ", returning `None` if the pointer is empty or has been garbage-collected."]
+      #[doc = ""]
+      #[doc = "# Safety"]
+      #[doc = ""]
+      #[doc = "The caller must ensure that this pointer is being traced correctly by appearing in the [`trace`](GarbageCollected::trace)"]
+      #[doc = "implementation of the object that owns the pointer. Between initializing the pointer and calling `get()`, the pointer must be reachable by the garbage collector."]
+      pub unsafe fn get(&self) -> Option<&T> {
+        let ptr = self.inner.get();
+        if ptr.is_null() {
+          None
+        } else {
+          // SAFETY: Either this is a strong reference and the pointer is valid according
+          // to the safety contract of this method, or this is a weak reference and the
+          // ptr will be null if it was collected.
+          Some(unsafe { &*get_value_from_rust_obj(ptr) })
         }
       }
+    }
 
-      impl<T: GarbageCollected> std::fmt::Debug for $name<T> {
-        fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-          fmt.debug_struct(stringify!($name)).finish()
-        }
+    impl<T: GarbageCollected> GetRustObj<T> for $name<T> {
+      fn get_rust_obj(&self) -> *mut RustObj {
+        self.inner.get()
+      }
+    }
+
+    impl<T: GarbageCollected> Traced for $name<T> {
+      fn trace(&self, visitor: &mut Visitor) {
+        unsafe { $trace(visitor, &self.inner) }
+      }
+    }
+
+    impl<T: GarbageCollected> std::fmt::Debug for $name<T> {
+      fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.debug_struct(stringify!($name)).finish()
       }
     }
   }
@@ -571,7 +578,14 @@ member! {
   /// Members are used in classes to contain strong pointers to other garbage
   /// collected objects. All Member fields of a class must be traced in the class'
   /// trace method.
-  Member
+  Member;
+  Inner = MemberInner,
+  SIZE = cppgc__Member_SIZE,
+  construct = cppgc__Member__CONSTRUCT,
+  get = cppgc__Member__Get,
+  assign = cppgc__Member__Assign,
+  destruct = cppgc__Member__DESTRUCT,
+  trace = cppgc__Visitor__Trace__Member
 }
 
 member! {
@@ -581,95 +595,107 @@ member! {
   /// pointee alive. Hence if all pointers to to a heap allocated object are weak
   /// the object will be garbage collected. At the time of GC the weak pointers
   /// will automatically be set to null.
-  WeakMember
+  WeakMember;
+  Inner = WeakMemberInner,
+  SIZE = cppgc__WeakMember_SIZE,
+  construct = cppgc__WeakMember__CONSTRUCT,
+  get = cppgc__WeakMember__Get,
+  assign = cppgc__WeakMember__Assign,
+  destruct = cppgc__WeakMember__DESTRUCT,
+  trace = cppgc__Visitor__Trace__WeakMember
 }
 
 macro_rules! persistent {
-  ($( # $attr:tt )* $name:ident) => {
-    paste::paste! {
-      // PersistentBase is extremely particular about move and copy semantics,
-      // so we allocate it on the heap and only interact with it via calls to C++.
-      #[repr(C)]
-      struct [< $name Inner >](Opaque);
+  (
+    $( # $attr:tt )* $name:ident;
+    Inner = $inner:ident,
+    construct = $construct:ident,
+    assign = $assign:ident,
+    get = $get:ident,
+    destruct = $destruct:ident
+  ) => {
+    // PersistentBase is extremely particular about move and copy semantics,
+    // so we allocate it on the heap and only interact with it via calls to C++.
+    #[repr(C)]
+    struct $inner(Opaque);
 
-      $( # $attr )*
-      pub struct $name<T: GarbageCollected> {
-        inner: *mut [< $name Inner >],
-        _phantom: PhantomData<T>,
-      }
+    $( # $attr )*
+    pub struct $name<T: GarbageCollected> {
+      inner: *mut $inner,
+      _phantom: PhantomData<T>,
+    }
 
-      impl<T: GarbageCollected> $name<T> {
-        #[doc = "Create a new empty "]
-        #[doc = stringify!($name)]
-        #[doc = " which may be set later."]
-        pub fn empty() -> Self {
-          let this = unsafe { [< cppgc__ $name __CONSTRUCT >](std::ptr::null_mut()) };
-          Self {
-            inner: this,
-            _phantom: PhantomData,
-          }
-        }
-
-        #[doc = "Create a new "]
-        #[doc = stringify!($name)]
-        #[doc = " and initialize it with an object."]
-        pub fn new(other: &impl GetRustObj<T>) -> Self {
-          let this = unsafe { [< cppgc__ $name __CONSTRUCT >](other.get_rust_obj()) };
-          Self {
-            inner: this,
-            _phantom: PhantomData,
-          }
-        }
-
-        #[doc = "Set the object pointed to by this "]
-        #[doc = stringify!($name)]
-        #[doc = "."]
-        pub fn set(&mut self, other: &impl GetRustObj<T>) {
-          let ptr = other.get_rust_obj();
-          self.assign(ptr);
-        }
-
-        #[doc = "Borrow the object pointed to by this "]
-        #[doc = stringify!($name)]
-        #[doc = "."]
-        pub fn get(&self) -> Option<&T> {
-          let ptr = self.get_rust_obj();
-          if ptr.is_null() {
-            None
-          } else {
-            // SAFETY: Either this is a strong reference and the pointer is always valid
-            // or this is a weak reference and the ptr will be null if it was collected.
-            Some(unsafe { &*get_value_from_rust_obj(ptr) })
-          }
-        }
-
-        #[inline(always)]
-        fn assign(&mut self, ptr: *mut RustObj) {
-          unsafe {
-            [< cppgc__ $name __Assign >](self.inner, ptr);
-          }
+    impl<T: GarbageCollected> $name<T> {
+      #[doc = "Create a new empty "]
+      #[doc = stringify!($name)]
+      #[doc = " which may be set later."]
+      pub fn empty() -> Self {
+        let this = unsafe { $construct(std::ptr::null_mut()) };
+        Self {
+          inner: this,
+          _phantom: PhantomData,
         }
       }
 
-      impl<T: GarbageCollected> Drop for $name<T> {
-        fn drop(&mut self) {
-          unsafe {
-            [< cppgc__ $name __DESTRUCT >](self.inner);
-          }
+      #[doc = "Create a new "]
+      #[doc = stringify!($name)]
+      #[doc = " and initialize it with an object."]
+      pub fn new(other: &impl GetRustObj<T>) -> Self {
+        let this = unsafe { $construct(other.get_rust_obj()) };
+        Self {
+          inner: this,
+          _phantom: PhantomData,
         }
       }
 
-      impl<T: GarbageCollected> std::fmt::Debug for $name<T> {
-        fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-          fmt.debug_struct(stringify!($name)).finish()
+      #[doc = "Set the object pointed to by this "]
+      #[doc = stringify!($name)]
+      #[doc = "."]
+      pub fn set(&mut self, other: &impl GetRustObj<T>) {
+        let ptr = other.get_rust_obj();
+        self.assign(ptr);
+      }
+
+      #[doc = "Borrow the object pointed to by this "]
+      #[doc = stringify!($name)]
+      #[doc = "."]
+      pub fn get(&self) -> Option<&T> {
+        let ptr = self.get_rust_obj();
+        if ptr.is_null() {
+          None
+        } else {
+          // SAFETY: Either this is a strong reference and the pointer is always valid
+          // or this is a weak reference and the ptr will be null if it was collected.
+          Some(unsafe { &*get_value_from_rust_obj(ptr) })
         }
       }
 
-      impl<T: GarbageCollected> GetRustObj<T> for $name<T> {
-        fn get_rust_obj(&self) -> *mut RustObj {
-          unsafe {
-            [< cppgc__ $name __Get >](self.inner)
-          }
+      #[inline(always)]
+      fn assign(&mut self, ptr: *mut RustObj) {
+        unsafe {
+          $assign(self.inner, ptr);
+        }
+      }
+    }
+
+    impl<T: GarbageCollected> Drop for $name<T> {
+      fn drop(&mut self) {
+        unsafe {
+          $destruct(self.inner);
+        }
+      }
+    }
+
+    impl<T: GarbageCollected> std::fmt::Debug for $name<T> {
+      fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.debug_struct(stringify!($name)).finish()
+      }
+    }
+
+    impl<T: GarbageCollected> GetRustObj<T> for $name<T> {
+      fn get_rust_obj(&self) -> *mut RustObj {
+        unsafe {
+          $get(self.inner)
         }
       }
     }
@@ -682,7 +708,12 @@ persistent! {
   /// keep the object pointed to alive. The Persistent handle is always a GC root
   /// from the point of view of the GC. Persistent must be constructed and
   /// destructed in the same thread.
-  Persistent
+  Persistent;
+  Inner = PersistentInner,
+  construct = cppgc__Persistent__CONSTRUCT,
+  assign = cppgc__Persistent__Assign,
+  get = cppgc__Persistent__Get,
+  destruct = cppgc__Persistent__DESTRUCT
 }
 
 persistent! {
@@ -690,7 +721,12 @@ persistent! {
   /// an on-heap object. The pointer is automatically cleared when the pointee gets
   /// collected. WeakPersistent must be constructed and destructed in the same
   /// thread.
-  WeakPersistent
+  WeakPersistent;
+  Inner = WeakPersistentInner,
+  construct = cppgc__WeakPersistent__CONSTRUCT,
+  assign = cppgc__WeakPersistent__Assign,
+  get = cppgc__WeakPersistent__Get,
+  destruct = cppgc__WeakPersistent__DESTRUCT
 }
 
 /// `GcCell` is a zero-overhead memory cell that provides interior mutability
