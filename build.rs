@@ -48,7 +48,7 @@ fn main() {
   {
     println!("cargo:rustc-env=RUSTY_V8_SRC_BINDING_PATH={binding}");
     println!("cargo:rustc-link-search={lib}");
-    println!("cargo:rustc-link-lib=kv8");
+    println!("cargo:rustc-link-lib=static:-bundle=kv8");
     post_link_args();
     return;
   }
@@ -88,7 +88,7 @@ fn main() {
     binding_path.display()
   );
   println!("cargo:rustc-link-search={}", out_dir.display());
-  println!("cargo:rustc-link-lib=kv8");
+  println!("cargo:rustc-link-lib=static:-bundle=kv8");
   post_link_args();
 }
 
