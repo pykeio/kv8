@@ -2,7 +2,7 @@
 members = [ "crates/serde_kv8", "crates/kv8-dynamic" ]
 
 [workspace.package]
-version = "152.2.0"
+version = "152.2.1"
 license = "MIT"
 edition = "2024"
 rust-version = "1.95"
