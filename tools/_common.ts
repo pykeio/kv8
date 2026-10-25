@@ -6,7 +6,7 @@ export const ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
 
 export const PATCHES_DIR = join(ROOT, 'patches');
 export const SRC_DIR = join(ROOT, 'src');
-export const TARGET_DIR = join(ROOT, 'rusty_v8');
+export const TARGET_DIR = join(ROOT, 'upstream');
 export const TARGET_SRC_DIR = join(TARGET_DIR, 'src');
 
 export async function resetUpstream() {

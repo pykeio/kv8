@@ -38,9 +38,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          mkdir -p rusty_v8/tools/win
+          mkdir -p upstream/tools/win
           curl -fL https://chromium.googlesource.com/chromium/src/tools/win/+archive/faefd1b6fa9eeb033ad6fe60368ccb9bf908cbd0.tar.gz |
-            tar -xz -C rusty_v8/tools/win
+            tar -xz -C upstream/tools/win
 
       - uses: denoland/setup-deno@v2
       - uses: dtolnay/rust-toolchain@stable
@@ -81,17 +81,17 @@ jobs:
         uses: actions/cache@v5
         with:
           path: |-
-            rusty_v8/target/sccache
-            rusty_v8/target/*/.*
-            rusty_v8/target/*/build
-            rusty_v8/target/*/deps
+            upstream/target/sccache
+            upstream/target/*/.*
+            upstream/target/*/build
+            upstream/target/*/deps
           key: cargo1-${{ matrix.config.target }}-${{ hashFiles('Cargo.lock', 'build.rs', 'git_submodule_status.txt') }}
           restore-keys: cargo1-${{ matrix.config.target }}-
 
       - name: Install and start sccache
         shell: pwsh
         env:
-          SCCACHE_DIR: ${{ github.workspace }}/rusty_v8/target/sccache
+          SCCACHE_DIR: ${{ github.workspace }}/upstream/target/sccache
           SCCACHE_CACHE_SIZE: 256M
           SCCACHE_IDLE_TIMEOUT: 0
         run: |
@@ -135,16 +135,16 @@ jobs:
           deno run -A tools/build-v8.ts --target ${{ matrix.config.target }}
       - name: Test
         env:
-          KV8_BINDING_PATH: ${{ github.workspace }}/rusty_v8/target/${{ matrix.config.target }}/release/gn_out/src_binding.rs
-          KV8_BUILD_DIR: ${{ github.workspace }}/rusty_v8/target/${{ matrix.config.target }}/release/gn_out/obj/
+          KV8_BINDING_PATH: ${{ github.workspace }}/upstream/target/${{ matrix.config.target }}/release/gn_out/src_binding.rs
+          KV8_BUILD_DIR: ${{ github.workspace }}/upstream/target/${{ matrix.config.target }}/release/gn_out/obj/
           TRYBUILD: overwrite # trybuild will pretty much always fail because our often newer rustc version has different error messages
         run: |
           cargo nextest run --all -v
 
       - name: Prepare upload
         run: |
-          gzip -9c rusty_v8/target/${{ matrix.config.target }}/release/gn_out/obj/${{ env.LIB_NAME }}.${{ env.LIB_EXT }} > ${{env.LIB_NAME}}_${{ matrix.config.target }}.${{env.LIB_EXT}}.gz
-          cp rusty_v8/target/${{ matrix.config.target }}/release/gn_out/src_binding.rs binding_${{ matrix.config.target }}.rs
+          gzip -9c upstream/target/${{ matrix.config.target }}/release/gn_out/obj/${{ env.LIB_NAME }}.${{ env.LIB_EXT }} > ${{env.LIB_NAME}}_${{ matrix.config.target }}.${{env.LIB_EXT}}.gz
+          cp upstream/target/${{ matrix.config.target }}/release/gn_out/src_binding.rs binding_${{ matrix.config.target }}.rs
 
       - uses: actions/upload-artifact@v7
         with:

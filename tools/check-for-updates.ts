@@ -22,7 +22,7 @@ await $`git pull origin ${newCommit}`.cwd(TARGET_DIR);
 await $`git submodule update --init --recursive`.cwd(TARGET_DIR);
 
 // add the clean upstream commit before patching so we don't push a dirty ref
-await $`git add rusty_v8`.cwd(ROOT);
+await $`git add upstream`.cwd(ROOT);
 
 await patch(true);
 
