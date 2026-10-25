@@ -16,13 +16,13 @@ default = [ "bigint" ]
 bigint = [ "dep:num-bigint", "dep:smallvec" ]
 
 [dependencies]
-kv8 = { path = "../", default-features = false }
+kv8 = { path = "../../", default-features = false }
 smallvec = { version = "1.16", optional = true, features = [ "union", "const_generics" ] }
 num-bigint = { version = "0.5", optional = true, default-features = false }
 serde_core = { version = "1.0", default-features = false, features = [ "alloc" ] }
 
 [dev-dependencies]
-kv8 = { path = "../" }
+kv8 = { path = "../../" }
 serde = { version = "1.0", features = [ "derive" ] }
 serde_bytes = "0.11"
 serde_json = "1.0"

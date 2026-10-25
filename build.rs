@@ -1,3 +1,6 @@
+#[path = "build/exports.rs"]
+mod exports;
+
 use std::{
   env,
   path::{Path, PathBuf},
@@ -8,61 +11,64 @@ static RELEASE_ROOT: &str = "https://github.com/pykeio/kv8/releases/download";
 
 fn main() {
   for var in ["CXXSTDLIB", "KV8_BINDING_PATH", "KV8_BUILD_DIR"] {
-    println!("cargo:rerun-if-env-changed={var}");
+    println!("cargo::rerun-if-env-changed={var}");
   }
 
   println!(
-    "cargo:rustc-check-cfg=cfg(feature, values(\"v8_enable_sandbox\", \"v8_enable_v8_checks\"))"
+    "cargo::rustc-check-cfg=cfg(feature, values(\"v8_enable_sandbox\", \"v8_enable_v8_checks\"))"
   );
   for feature in ["simdutf", "v8_enable_pointer_compression"] {
-    println!("cargo:rustc-check-cfg=cfg(feature, values(\"{feature}\"))");
-    println!("cargo:rustc-cfg=feature=\"{feature}\"");
+    println!("cargo::rustc-check-cfg=cfg(feature, values(\"{feature}\"))");
+    println!("cargo::rustc-cfg=feature=\"{feature}\"");
   }
 
   if let Ok(stdlib) = env::var("CXXSTDLIB")
     && !stdlib.is_empty()
   {
-    println!("cargo:rustc-link-lib=dylib={stdlib}");
+    println!("cargo::rustc-link-lib=dylib={stdlib}");
   } else {
     let target = env::var("TARGET").unwrap();
     if target.contains("apple")
       || target.contains("freebsd")
       || target.contains("openbsd")
     {
-      println!("cargo:rustc-link-lib=dylib=c++");
+      println!("cargo::rustc-link-lib=dylib=c++");
     } else if target.contains("android") {
-      println!("cargo:rustc-link-lib=dylib=c++_shared");
+      println!("cargo::rustc-link-lib=dylib=c++_shared");
     } else if !target.contains("msvc") {
-      println!("cargo:rustc-link-lib=dylib=stdc++");
+      println!("cargo::rustc-link-lib=dylib=stdc++");
     }
   }
 
   let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
   if target_os == "windows" {
-    println!("cargo:rustc-link-lib=dylib=winmm");
-    println!("cargo:rustc-link-lib=dylib=dbghelp");
+    println!("cargo::rustc-link-lib=dylib=winmm");
+    println!("cargo::rustc-link-lib=dylib=dbghelp");
   }
+
+  let (lib_name, lib_suffix) = if target_os != "windows" {
+    ("libkv8", ".a")
+  } else {
+    ("kv8", ".lib")
+  };
 
   if let Ok(binding) = env::var("KV8_BINDING_PATH")
     && let Ok(lib) = env::var("KV8_BUILD_DIR")
   {
-    println!("cargo:rustc-env=RUSTY_V8_SRC_BINDING_PATH={binding}");
-    println!("cargo:rustc-link-search={lib}");
-    println!("cargo:rustc-link-lib=static:-bundle=kv8");
+    println!("cargo::rustc-env=RUSTY_V8_SRC_BINDING_PATH={binding}");
+    println!("cargo::rustc-link-search={lib}");
+    println!("cargo::rustc-link-lib=static:-bundle=kv8");
     post_link_args();
+    export_c_symbols(
+      &Path::new(&lib).join(format!("{lib_name}{lib_suffix}")),
+      Path::new(&binding),
+    );
     return;
   }
 
   let version = env::var("CARGO_PKG_VERSION").unwrap();
   let target = env::var("TARGET").unwrap();
   let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-
-  let lib_name = if target_os != "windows" {
-    "libkv8"
-  } else {
-    "kv8"
-  };
-  let lib_suffix = if target_os != "windows" { ".a" } else { ".lib" };
 
   let binding_url = format!("{RELEASE_ROOT}/v{version}/binding_{target}.rs");
   let binding_path = out_dir.join("binding.rs");
@@ -84,12 +90,31 @@ fn main() {
   }
 
   println!(
-    "cargo:rustc-env=RUSTY_V8_SRC_BINDING_PATH={}",
+    "cargo::rustc-env=RUSTY_V8_SRC_BINDING_PATH={}",
     binding_path.display()
   );
-  println!("cargo:rustc-link-search={}", out_dir.display());
-  println!("cargo:rustc-link-lib=static:-bundle=kv8");
+  println!("cargo::rustc-link-search={}", out_dir.display());
+  println!("cargo::rustc-link-lib=static:-bundle=kv8");
   post_link_args();
+  export_c_symbols(&lib_path, &binding_path);
+}
+
+fn export_c_symbols(lib: &Path, binding: &Path) {
+  let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+  let target_family = env::var("CARGO_CFG_TARGET_FAMILY").unwrap_or_default();
+  let apple = env::var("CARGO_CFG_TARGET_VENDOR").unwrap() == "apple";
+  if target_env != "msvc" && !target_family.split(',').any(|f| f == "unix") {
+    return;
+  }
+
+  let src = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("src");
+  println!("cargo::rerun-if-changed={}", src.display());
+  println!("cargo::rerun-if-changed={}", lib.display());
+  println!("cargo::rerun-if-changed={}", binding.display());
+  let symbols = self::exports::collect_c_symbols(lib, &src, binding, apple);
+  let list = PathBuf::from(env::var("OUT_DIR").unwrap()).join("exports.txt");
+  std::fs::write(&list, symbols.join("\n")).unwrap();
+  println!("cargo::metadata=SYMBOLS={}", list.display());
 }
 
 fn post_link_args() {
@@ -99,9 +124,9 @@ fn post_link_args() {
       .unwrap_or_default()
       .contains("crt-static");
     if crt_static {
-      println!("cargo:rustc-link-lib=libcpmt");
+      println!("cargo::rustc-link-lib=libcpmt");
     } else {
-      println!("cargo:rustc-link-lib=dylib=msvcprt");
+      println!("cargo::rustc-link-lib=dylib=msvcprt");
     }
   }
 }

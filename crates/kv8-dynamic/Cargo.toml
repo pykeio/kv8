@@ -1,0 +1,17 @@
+[package]
+name = "kv8-dynamic"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+path = "lib.rs"
+crate-type = [ "dylib" ]
+
+[features]
+default = ["use_custom_libcxx"]
+use_custom_libcxx = ["kv8/use_custom_libcxx"]
+
+[dependencies]
+kv8 = { path = "../../", default-features = false }
