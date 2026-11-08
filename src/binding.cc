@@ -427,6 +427,11 @@ void v8__Isolate__RemoveNearHeapLimitCallback(
   isolate->RemoveNearHeapLimitCallback(callback, heap_limit);
 }
 
+void v8__Isolate__AutomaticallyRestoreInitialHeapLimit(
+    v8::Isolate* isolate, double threshold_percent) {
+  isolate->AutomaticallyRestoreInitialHeapLimit(threshold_percent);
+}
+
 int64_t v8__Isolate__AdjustAmountOfExternalAllocatedMemory(
     v8::Isolate* isolate, int64_t change_in_bytes) {
   return isolate->AdjustAmountOfExternalAllocatedMemory(change_in_bytes);

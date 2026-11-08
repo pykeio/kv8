@@ -762,6 +762,10 @@ unsafe extern "C" {
     callback: NearHeapLimitCallback,
     heap_limit: usize,
   );
+  fn v8__Isolate__AutomaticallyRestoreInitialHeapLimit(
+    isolate: *mut RealIsolate,
+    threshold_percent: f64,
+  );
   fn v8__Isolate__SetOOMErrorHandler(
     isolate: *mut RealIsolate,
     callback: OomErrorCallback,
@@ -1935,6 +1939,23 @@ impl Isolate {
         self.as_real_ptr(),
         callback,
         heap_limit,
+      );
+    };
+  }
+
+  /// If a near-heap-limit callback raised the heap limit, restores the
+  /// initial limit once the heap size falls below `threshold_percent` of it
+  /// (a number in the `(0.0, 1.0)` range; default is 0.5). Without this,
+  /// a limit raised by a callback will stay raised.
+  #[inline(always)]
+  pub fn automatically_restore_initial_heap_limit(
+    &mut self,
+    threshold_percent: f64,
+  ) {
+    unsafe {
+      v8__Isolate__AutomaticallyRestoreInitialHeapLimit(
+        self.as_real_ptr(),
+        threshold_percent,
       );
     };
   }
