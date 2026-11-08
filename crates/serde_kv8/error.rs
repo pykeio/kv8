@@ -28,6 +28,13 @@ pub enum Error {
   RecursionLimitExceeded,
   V8Exception,
   ResizableBackingStoreNotSupported,
+  NonInteger {
+    got: f64,
+    name: &'static str,
+  },
+  OutOfRangeBigInt {
+    name: &'static str,
+  },
   Custom(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
@@ -83,6 +90,8 @@ impl fmt::Display for Error {
       Self::ResizableBackingStoreNotSupported => {
         f.write_str("can't create slice from resizable ArrayBuffer")
       }
+      Self::NonInteger { got, name } => f.write_fmt(format_args!("invalid type; expected an integer that fits in {name}, got: {got}")),
+      Self::OutOfRangeBigInt { name } => f.write_fmt(format_args!("invalid type; expected an integer that fits in {name}, got a BigInt outside its range")),
       Self::Custom(e) => e.fmt(f),
     }
   }

@@ -99,6 +99,30 @@ where
   Ok(t)
 }
 
+fn number_to_integer<T: TryFrom<i128>>(
+  x: f64,
+  name: &'static str,
+) -> Result<T> {
+  if x.is_finite()
+    && x.fract() == 0.0
+    && x.abs() < 1.7e38
+    && let Ok(value) = T::try_from(x as i128)
+  {
+    return Ok(value);
+  }
+  Err(Error::NonInteger { got: x, name })
+}
+
+fn bigint_to_integer<T: TryFrom<V>, V: std::fmt::Display>(
+  (value, lossless): (V, bool),
+  name: &'static str,
+) -> Result<T> {
+  if lossless && let Ok(value) = T::try_from(value) {
+    return Ok(value);
+  }
+  Err(Error::OutOfRangeBigInt { name })
+}
+
 macro_rules! deserialize_signed {
   ($dmethod:ident, $vmethod:ident, $t:tt) => {
     fn $dmethod<V>(self, visitor: V) -> Result<V::Value>
@@ -107,9 +131,9 @@ macro_rules! deserialize_signed {
     {
       visitor.$vmethod(
         if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
-          x.value() as $t
+          number_to_integer::<$t>(x.value(), stringify!($t))?
         } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
-          x.i64_value().0 as $t
+          bigint_to_integer::<$t, i64>(x.i64_value(), stringify!($t))?
         } else {
           return Err(Error::ExpectedInteger(self.input.type_repr()));
         },
@@ -126,9 +150,9 @@ macro_rules! deserialize_unsigned {
     {
       visitor.$vmethod(
         if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
-          x.value() as $t
+          number_to_integer::<$t>(x.value(), stringify!($t))?
         } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
-          x.u64_value().0 as $t
+          bigint_to_integer::<$t, u64>(x.u64_value(), stringify!($t))?
         } else {
           return Err(Error::ExpectedInteger(self.input.type_repr()));
         },

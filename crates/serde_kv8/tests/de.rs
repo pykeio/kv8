@@ -542,40 +542,109 @@ detest!(
 );
 
 // NaN
-detest!(de_nan_u8, u8, "NaN", 0);
-detest!(de_nan_u16, u16, "NaN", 0);
-detest!(de_nan_u32, u32, "NaN", 0);
-detest!(de_nan_u64, u64, "NaN", 0);
-detest!(de_nan_i8, i8, "NaN", 0);
-detest!(de_nan_i16, i16, "NaN", 0);
-detest!(de_nan_i32, i32, "NaN", 0);
-detest!(de_nan_i64, i64, "NaN", 0);
+defail!(de_nan_u8, u8, "NaN", |e: serde_v8::Result<u8>| e.is_err());
+defail!(de_nan_u16, u16, "NaN", |e: serde_v8::Result<u16>| e
+  .is_err());
+defail!(de_nan_u32, u32, "NaN", |e: serde_v8::Result<u32>| e
+  .is_err());
+defail!(de_nan_u64, u64, "NaN", |e: serde_v8::Result<u64>| e
+  .is_err());
+defail!(de_nan_i8, i8, "NaN", |e: serde_v8::Result<i8>| e.is_err());
+defail!(de_nan_i16, i16, "NaN", |e: serde_v8::Result<i16>| e
+  .is_err());
+defail!(de_nan_i32, i32, "NaN", |e: serde_v8::Result<i32>| e
+  .is_err());
+defail!(de_nan_i64, i64, "NaN", |e: serde_v8::Result<i64>| e
+  .is_err());
 decheck!(de_nan_f32, f32, "NaN", t, assert!(t.is_nan()));
 decheck!(de_nan_f64, f64, "NaN", t, assert!(t.is_nan()));
 
 // Infinity
-detest!(de_inf_u8, u8, "Infinity", u8::MAX);
-detest!(de_inf_u16, u16, "Infinity", u16::MAX);
-detest!(de_inf_u32, u32, "Infinity", u32::MAX);
-detest!(de_inf_u64, u64, "Infinity", u64::MAX);
-detest!(de_inf_i8, i8, "Infinity", i8::MAX);
-detest!(de_inf_i16, i16, "Infinity", i16::MAX);
-detest!(de_inf_i32, i32, "Infinity", i32::MAX);
-detest!(de_inf_i64, i64, "Infinity", i64::MAX);
+defail!(de_inf_u8, u8, "Infinity", |e: serde_v8::Result<u8>| e
+  .is_err());
+defail!(de_inf_u16, u16, "Infinity", |e: serde_v8::Result<u16>| e
+  .is_err());
+defail!(de_inf_u32, u32, "Infinity", |e: serde_v8::Result<u32>| e
+  .is_err());
+defail!(de_inf_u64, u64, "Infinity", |e: serde_v8::Result<u64>| e
+  .is_err());
+defail!(de_inf_i8, i8, "Infinity", |e: serde_v8::Result<i8>| e
+  .is_err());
+defail!(de_inf_i16, i16, "Infinity", |e: serde_v8::Result<i16>| e
+  .is_err());
+defail!(de_inf_i32, i32, "Infinity", |e: serde_v8::Result<i32>| e
+  .is_err());
+defail!(de_inf_i64, i64, "Infinity", |e: serde_v8::Result<i64>| e
+  .is_err());
 detest!(de_inf_f32, f32, "Infinity", f32::INFINITY);
 detest!(de_inf_f64, f64, "Infinity", f64::INFINITY);
 
 // -Infinity
-detest!(de_neg_inf_u8, u8, "-Infinity", u8::MIN);
-detest!(de_neg_inf_u16, u16, "-Infinity", u16::MIN);
-detest!(de_neg_inf_u32, u32, "-Infinity", u32::MIN);
-detest!(de_neg_inf_u64, u64, "-Infinity", u64::MIN);
-detest!(de_neg_inf_i8, i8, "-Infinity", i8::MIN);
-detest!(de_neg_inf_i16, i16, "-Infinity", i16::MIN);
-detest!(de_neg_inf_i32, i32, "-Infinity", i32::MIN);
-detest!(de_neg_inf_i64, i64, "-Infinity", i64::MIN);
+defail!(de_neg_inf_u8, u8, "-Infinity", |e: serde_v8::Result<u8>| e
+  .is_err());
+defail!(de_neg_inf_u16, u16, "-Infinity", |e: serde_v8::Result<
+  u16,
+>| e.is_err());
+defail!(de_neg_inf_u32, u32, "-Infinity", |e: serde_v8::Result<
+  u32,
+>| e.is_err());
+defail!(de_neg_inf_u64, u64, "-Infinity", |e: serde_v8::Result<
+  u64,
+>| e.is_err());
+defail!(de_neg_inf_i8, i8, "-Infinity", |e: serde_v8::Result<i8>| e
+  .is_err());
+defail!(de_neg_inf_i16, i16, "-Infinity", |e: serde_v8::Result<
+  i16,
+>| e.is_err());
+defail!(de_neg_inf_i32, i32, "-Infinity", |e: serde_v8::Result<
+  i32,
+>| e.is_err());
+defail!(de_neg_inf_i64, i64, "-Infinity", |e: serde_v8::Result<
+  i64,
+>| e.is_err());
 detest!(de_neg_inf_f32, f32, "-Infinity", f32::NEG_INFINITY);
 detest!(de_neg_inf_f64, f64, "-Infinity", f64::NEG_INFINITY);
+
+defail!(de_fraction_u32, u32, "1.5", |e: serde_v8::Result<u32>| e
+  .is_err());
+defail!(de_negative_u32, u32, "-1", |e: serde_v8::Result<u32>| e
+  .is_err());
+defail!(de_too_large_u8, u8, "256", |e: serde_v8::Result<u8>| e
+  .is_err());
+defail!(de_too_small_i8, i8, "-129", |e: serde_v8::Result<i8>| e
+  .is_err());
+defail!(de_too_large_u64, u64, "2 ** 64", |e: serde_v8::Result<
+  u64,
+>| e.is_err());
+defail!(de_too_large_i64, i64, "2 ** 63", |e: serde_v8::Result<
+  i64,
+>| e.is_err());
+defail!(
+  de_bigint_too_large_u32,
+  u32,
+  "2n ** 32n",
+  |e: serde_v8::Result<u32>| e.is_err()
+);
+defail!(de_bigint_negative_u64, u64, "-1n", |e: serde_v8::Result<
+  u64,
+>| e.is_err());
+defail!(
+  de_bigint_too_large_i64,
+  i64,
+  "2n ** 63n",
+  |e: serde_v8::Result<i64>| e.is_err()
+);
+detest!(de_negative_zero_u32, u32, "-0", 0);
+detest!(de_max_u8, u8, "255", 255);
+detest!(de_min_i64, i64, "-(2 ** 63)", i64::MIN);
+detest!(
+  de_max_safe_u64,
+  u64,
+  "Number.MAX_SAFE_INTEGER",
+  9007199254740991
+);
+detest!(de_bigint_u64_max, u64, "2n ** 64n - 1n", u64::MAX);
+detest!(de_bigint_i8, i8, "-128n", -128);
 
 // BigInt to f32/f64 max/min
 detest!(
